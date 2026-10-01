@@ -87,12 +87,11 @@ export default function Wheel({
     ctx.translate(centerX, centerY);
     ctx.rotate(rotationAngleRad);
 
-    // Font metrics based on radius - optimized to keep text pushed outward away from center hub
-    const iconSize = Math.max(14, Math.round(radius * 0.13));
-    const labelSize = Math.max(7.5, Math.round(radius * 0.065));
-    const iconPos = radius * 0.88;
-    const labelEndPos = radius * 0.77;
-    // Draw Slices
+    // Font metrics based on radius - mathematically centered in clear radial band
+    const iconSize = Math.max(13, Math.round(radius * 0.115));
+    const labelSize = Math.max(7.5, Math.round(radius * 0.056));
+    const iconPos = radius * 0.83;
+    const labelCenterPos = radius * 0.48;
     for (let i = 0; i < sliceCount; i++) {
       const config = SLICE_CONFIGS[i];
       const startAngle = i * sliceAngle;
@@ -119,19 +118,19 @@ export default function Wheel({
       ctx.save();
       const midAngle = startAngle + sliceAngle / 2;
       ctx.rotate(midAngle);
-      ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
 
       // Draw Icon near the outer rim
+      ctx.textAlign = 'center';
       ctx.font = `${iconSize}px sans-serif`;
       ctx.fillText(config.icon, iconPos, 0);
 
-      // Draw Label pushed out towards the rim (away from center hub)
+      // Draw Label centered in the clear band between center hub and icon (never overlaps!)
       ctx.fillStyle = '#FFFFFF';
       ctx.font = `bold ${labelSize}px system-ui, -apple-system, sans-serif`;
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
       ctx.shadowBlur = 3;
-      ctx.fillText(config.label, labelEndPos, 0);
+      ctx.fillText(config.label, labelCenterPos, 0);
 
       ctx.restore();
     }
@@ -158,10 +157,10 @@ export default function Wheel({
 
     ctx.restore(); // Restore translate & rotate
 
-    // Center Hub Metrics (slightly more compact to leave clear radial room for text)
-    const hubOuterRadius = Math.round(radius * 0.24);
-    const hubInnerRadius = Math.round(radius * 0.20);
-    const spinFontSize = Math.max(10, Math.round(radius * 0.095));
+    // Center Hub Metrics (compact to maximize radial space for slice content)
+    const hubOuterRadius = Math.round(radius * 0.22);
+    const hubInnerRadius = Math.round(radius * 0.18);
+    const spinFontSize = Math.max(9.5, Math.round(radius * 0.09));
 
     // Center Hub Rim
     ctx.beginPath();
@@ -171,7 +170,6 @@ export default function Wheel({
     ctx.strokeStyle = '#FDE047';
     ctx.lineWidth = Math.max(2, Math.round(radius * 0.02));
     ctx.stroke();
-
     // Center Hub Button
     const hubGrad = ctx.createLinearGradient(
       centerX - hubInnerRadius,
@@ -302,7 +300,7 @@ export default function Wheel({
 
       {/* Main Wheel Canvas with responsive constraints */}
       <div
-        className="relative cursor-pointer transition-transform active:scale-[0.98] w-[250px] h-[250px] xs:w-[275px] xs:h-[275px] sm:w-[320px] sm:h-[320px] max-w-[80vw] max-h-[46vh] flex items-center justify-center"
+        className="relative cursor-pointer transition-transform active:scale-[0.98] w-[265px] h-[265px] xs:w-[285px] xs:h-[285px] sm:w-[325px] sm:h-[325px] max-w-[82vw] max-h-[48vh] flex items-center justify-center"
         onClick={handleCenterClick}
       >
         <canvas
