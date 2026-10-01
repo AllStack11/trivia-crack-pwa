@@ -87,12 +87,11 @@ export default function Wheel({
     ctx.translate(centerX, centerY);
     ctx.rotate(rotationAngleRad);
 
-    // Font metrics based on radius
-    const iconSize = Math.max(16, Math.round(radius * 0.16));
-    const labelSize = Math.max(8, Math.round(radius * 0.075));
-    const iconOffset = Math.round(radius * 0.15);
-    const labelOffset = Math.round(radius * 0.42);
-
+    // Font metrics based on radius - optimized to keep text pushed outward away from center hub
+    const iconSize = Math.max(14, Math.round(radius * 0.13));
+    const labelSize = Math.max(7.5, Math.round(radius * 0.065));
+    const iconPos = radius * 0.88;
+    const labelEndPos = radius * 0.77;
     // Draw Slices
     for (let i = 0; i < sliceCount; i++) {
       const config = SLICE_CONFIGS[i];
@@ -123,16 +122,16 @@ export default function Wheel({
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
 
-      // Draw Icon
+      // Draw Icon near the outer rim
       ctx.font = `${iconSize}px sans-serif`;
-      ctx.fillText(config.icon, radius - iconOffset, 0);
+      ctx.fillText(config.icon, iconPos, 0);
 
-      // Draw Label
+      // Draw Label pushed out towards the rim (away from center hub)
       ctx.fillStyle = '#FFFFFF';
       ctx.font = `bold ${labelSize}px system-ui, -apple-system, sans-serif`;
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
       ctx.shadowBlur = 3;
-      ctx.fillText(config.label, radius - labelOffset, 0);
+      ctx.fillText(config.label, labelEndPos, 0);
 
       ctx.restore();
     }
@@ -159,10 +158,10 @@ export default function Wheel({
 
     ctx.restore(); // Restore translate & rotate
 
-    // Center Hub Metrics
-    const hubOuterRadius = Math.round(radius * 0.32);
-    const hubInnerRadius = Math.round(radius * 0.27);
-    const spinFontSize = Math.max(12, Math.round(radius * 0.12));
+    // Center Hub Metrics (slightly more compact to leave clear radial room for text)
+    const hubOuterRadius = Math.round(radius * 0.24);
+    const hubInnerRadius = Math.round(radius * 0.20);
+    const spinFontSize = Math.max(10, Math.round(radius * 0.095));
 
     // Center Hub Rim
     ctx.beginPath();
@@ -170,7 +169,7 @@ export default function Wheel({
     ctx.fillStyle = '#0F172A';
     ctx.fill();
     ctx.strokeStyle = '#FDE047';
-    ctx.lineWidth = Math.max(2, Math.round(radius * 0.025));
+    ctx.lineWidth = Math.max(2, Math.round(radius * 0.02));
     ctx.stroke();
 
     // Center Hub Button
@@ -193,7 +192,7 @@ export default function Wheel({
     ctx.fillStyle = canSpin && !isSpinning ? '#FFFFFF' : '#94A3B8';
     ctx.font = `bold ${spinFontSize}px system-ui, -apple-system, sans-serif`;
     ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-    ctx.shadowBlur = 4;
+    ctx.shadowBlur = 3;
     ctx.fillText('SPIN', centerX, centerY);
   }, [canSpin, isSpinning]);
 
