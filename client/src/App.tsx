@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { WheelSlice } from '../../shared/src/index';
+import type {
+  ActiveQuestionSync,
+  QuestionResult,
+  WheelSlice
+} from '../../shared/src/index';
 import { CATEGORIES } from '../../shared/src/index';
 import CrownBar from './components/CrownBar';
 import CrownModal from './components/CrownModal';
@@ -37,6 +41,13 @@ export default function App() {
   const [wheelTargetDegrees, setWheelTargetDegrees] = useState<number | undefined>(undefined);
   const [landedCategoryName, setLandedCategoryName] = useState<string | null>(null);
   const lastAnimatedSpinRef = useRef<number | null>(null);
+
+  // Result review state: keeps question on screen for 3s to show green/red indicator
+  const [activeReviewResult, setActiveReviewResult] = useState<{
+    question: ActiveQuestionSync;
+    result: QuestionResult;
+  } | null>(null);
+  const resultReviewTimerRef = useRef<number | undefined>(undefined);
 
   // Auto-restore session from sessionStorage if available
   useEffect(() => {
@@ -104,6 +115,24 @@ export default function App() {
     }
   }, [gameState, myPlayerId]);
 
+  // When spectator receives opponent's answer result via SSE, display result review for 3s
+  useEffect(() => {
+    if (
+      gameState?.lastResult &&
+      gameState.currentTurnPlayerId !== myPlayerId &&
+      gameState.activeQuestion
+    ) {
+      setActiveReviewResult({
+        question: gameState.activeQuestion,
+        result: gameState.lastResult
+      });
+      clearTimeout(resultReviewTimerRef.current);
+      resultReviewTimerRef.current = window.setTimeout(() => {
+        setActiveReviewResult(null);
+      }, 3000);
+    }
+  }, [gameState?.lastResult, gameState?.currentTurnPlayerId, gameState?.activeQuestion, myPlayerId]);
+
   // Handle Game Over victory sound & confetti
   useEffect(() => {
     if (gameState?.status === 'COMPLETED' && gameState.winnerId) {
@@ -158,6 +187,8 @@ export default function App() {
     setMyPlayerToken(null);
     setIsWheelSpinning(false);
     setLandedCategoryName(null);
+    clearTimeout(resultReviewTimerRef.current);
+    setActiveReviewResult(null);
     setView('LOBBY');
     window.history.pushState(null, '', '/');
   };
@@ -199,6 +230,25 @@ export default function App() {
     }, 850);
   }, []);
 
+  // Answer question and hold result on screen for 3s to show green/red outcome
+  const handleAnswerQuestion = async (
+    targetQuestion: ActiveQuestionSync,
+    ansIdx: number,
+    timeMs: number
+  ) => {
+    const res = await answer(targetQuestion.id, ansIdx, timeMs);
+    if (res) {
+      setActiveReviewResult({
+        question: targetQuestion,
+        result: res
+      });
+      clearTimeout(resultReviewTimerRef.current);
+      resultReviewTimerRef.current = window.setTimeout(() => {
+        setActiveReviewResult(null);
+      }, 3000);
+    }
+  };
+
   const isMyTurn = Boolean(
     gameState && myPlayerId && gameState.currentTurnPlayerId === myPlayerId
   );
@@ -206,18 +256,21 @@ export default function App() {
   // Determine whether to display Wheel vs Question vs Crown Modal
   // While isWheelSpinning is true, the Wheel remains visible until the spin is complete!
   const shouldShowWheel =
+    !activeReviewResult &&
     gameState?.status === 'IN_PROGRESS' &&
     (isWheelSpinning ||
       gameState.mode === 'SPIN' ||
       gameState.mode === 'SPINNING');
 
   const shouldShowQuestion =
-    !isWheelSpinning &&
-    gameState?.status === 'IN_PROGRESS' &&
-    gameState.mode === 'QUESTION' &&
-    Boolean(gameState.activeQuestion);
+    Boolean(activeReviewResult) ||
+    (!isWheelSpinning &&
+      gameState?.status === 'IN_PROGRESS' &&
+      gameState.mode === 'QUESTION' &&
+      Boolean(gameState.activeQuestion));
 
   const shouldShowCrownModal =
+    !activeReviewResult &&
     !isWheelSpinning &&
     gameState?.status === 'IN_PROGRESS' &&
     gameState.mode === 'CROWN_CHOICE';
@@ -338,18 +391,22 @@ export default function App() {
                 </div>
               )}
 
-              {/* Mode: QUESTION ACTIVE */}
-              {shouldShowQuestion && gameState.activeQuestion && (
+              {/* Mode: QUESTION ACTIVE OR RESULT REVIEW */}
+              {shouldShowQuestion && (activeReviewResult || gameState.activeQuestion) && (
                 <div className="w-full animate-scale-up">
                   <QuestionView
-                    question={gameState.activeQuestion}
-                    isMyTurn={isMyTurn}
+                    question={activeReviewResult ? activeReviewResult.question : gameState.activeQuestion!}
+                    isMyTurn={isMyTurn && !activeReviewResult}
                     onAnswer={(ansIdx, timeMs) => {
                       if (gameState.activeQuestion) {
-                        answer(gameState.activeQuestion.id, ansIdx, timeMs);
+                        handleAnswerQuestion(gameState.activeQuestion, ansIdx, timeMs);
                       }
                     }}
-                    lastResult={lastResult}
+                    lastResult={activeReviewResult ? activeReviewResult.result : lastResult}
+                    onDismissResult={() => {
+                      clearTimeout(resultReviewTimerRef.current);
+                      setActiveReviewResult(null);
+                    }}
                   />
                 </div>
               )}
