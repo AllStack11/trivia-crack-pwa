@@ -25,6 +25,7 @@ interface DbGameRow {
   winner_id: string | null;
   win_reason: string | null;
   pack_ids_json: string;
+  last_spin_json: string | null;
   last_result_json: string | null;
   created_at: number;
   updated_at: number;
@@ -206,7 +207,8 @@ export async function spinWheel(
   const sliceArc = 360 / 7;
   const sliceCenter = sliceIndex * sliceArc + sliceArc / 2;
   const extraRotations = (4 + Math.floor(Math.random() * 3)) * 360;
-  const targetDegrees = extraRotations + (360 - sliceCenter);
+  const targetDegrees = extraRotations + ((270 - sliceCenter + 360) % 360);
+  const lastSpinPayload = JSON.stringify({ targetDegrees, slice: landedSlice });
 
   let packIds: string[] = ['default'];
   try {
@@ -221,9 +223,10 @@ export async function spinWheel(
     // Transition directly to Crown Choice
     await db.execute(
       `UPDATE games
-       SET active_mode = 'CROWN_CHOICE', active_question_json = NULL, updated_at = ?
+       SET active_mode = 'CROWN_CHOICE', active_question_json = NULL,
+           last_spin_json = ?, updated_at = ?
        WHERE id = ?`,
-      [now, gameId]
+      [lastSpinPayload, now, gameId]
     );
   } else {
     // Category question
@@ -249,9 +252,10 @@ export async function spinWheel(
 
     await db.execute(
       `UPDATE games
-       SET active_mode = 'QUESTION', active_question_json = ?, updated_at = ?
+       SET active_mode = 'QUESTION', active_question_json = ?,
+           last_spin_json = ?, updated_at = ?
        WHERE id = ?`,
-      [JSON.stringify(storedQuestion), now, gameId]
+      [JSON.stringify(storedQuestion), lastSpinPayload, now, gameId]
     );
   }
 
@@ -719,6 +723,15 @@ export async function getGameStateSync(
     }
   }
 
+  let lastSpin: { targetDegrees: number; slice: WheelSlice } | undefined;
+  if (game.last_spin_json) {
+    try {
+      lastSpin = JSON.parse(game.last_spin_json) as { targetDegrees: number; slice: WheelSlice };
+    } catch {
+      // Ignored
+    }
+  }
+
   return {
     id: game.id,
     inviteCode: game.invite_code,
@@ -732,6 +745,7 @@ export async function getGameStateSync(
     maxRounds: game.max_rounds,
     mode: game.active_mode,
     activeQuestion: activeQuestionSync,
+    lastSpin,
     lastResult,
     winnerId: game.winner_id || undefined,
     winReason: game.win_reason || undefined,

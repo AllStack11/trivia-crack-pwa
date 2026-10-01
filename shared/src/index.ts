@@ -152,6 +152,10 @@ export interface GameStateSync {
   maxRounds: number;
   mode: GameMode;
   activeQuestion?: ActiveQuestionSync;
+  lastSpin?: {
+    targetDegrees: number;
+    slice: WheelSlice;
+  };
   lastResult?: QuestionResult;
   winnerId?: string;
   winReason?: string;

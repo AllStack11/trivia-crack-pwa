@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS games (
   winner_id TEXT,
   win_reason TEXT,
   pack_ids_json TEXT NOT NULL DEFAULT '["default"]',
+  last_spin_json TEXT,
   last_result_json TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
@@ -180,5 +181,10 @@ export async function getDatabase(env?: { DB?: CloudflareD1Database }): Promise<
 
   // Auto-migrate schema on local startup
   await localDbInstance.exec(SCHEMA_SQL);
+  try {
+    await localDbInstance.execute('ALTER TABLE games ADD COLUMN last_spin_json TEXT;');
+  } catch {
+    // Already exists
+  }
   return localDbInstance;
 }

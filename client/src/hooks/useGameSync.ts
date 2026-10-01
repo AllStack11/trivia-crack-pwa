@@ -104,6 +104,10 @@ export function useGameSync({
           if (fresh.lastResult) {
             setLastResult(fresh.lastResult);
           }
+          if (fresh.lastSpin) {
+            setTargetDegrees(fresh.lastSpin.targetDegrees);
+            setLastSpinSlice(fresh.lastSpin.slice);
+          }
           setLoading(false);
         } catch {
           // Ignore JSON parse error

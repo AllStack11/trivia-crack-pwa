@@ -18,9 +18,8 @@ CREATE TABLE IF NOT EXISTS games (
   max_rounds INTEGER NOT NULL DEFAULT 25,
   active_question_json TEXT,
   active_mode TEXT NOT NULL DEFAULT 'SPIN',
-  winner_id TEXT,
-  win_reason TEXT,
   pack_ids_json TEXT NOT NULL DEFAULT '["default"]',
+  last_spin_json TEXT,
   last_result_json TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
