@@ -4,7 +4,6 @@ import type { AppDatabase } from '../src/db/database';
 import { createBunDatabase, SCHEMA_SQL } from '../src/db/database';
 import {
   createGame,
-  joinGame,
   spinWheel,
   chooseCrown,
   answerQuestion,
@@ -12,6 +11,9 @@ import {
   getGameStateSync
 } from '../src/services/gameEngine';
 import { ensureDefaultPackSeeded } from '../src/services/packService';
+
+const PLAYER_ONE = 'player_one';
+const PLAYER_TWO = 'player_two';
 
 describe('Game Engine State Machine', () => {
   let db: AppDatabase;
@@ -21,35 +23,15 @@ describe('Game Engine State Machine', () => {
     db = await createBunDatabase(':memory:');
     await db.exec(SCHEMA_SQL);
     await ensureDefaultPackSeeded(db);
-  });
-
-  test('Room creation and player join lifecycle', async () => {
-    const host = await createGame(db, 'Alice');
-    expect(host.gameId).toBeDefined();
-    expect(host.inviteCode.startsWith('TRIV-')).toBe(true);
-
-    let state = await getGameStateSync(db, host.gameId);
-    expect(state).not.toBeNull();
-    expect(state?.status).toBe('WAITING');
-    expect(state?.players.p1.username).toBe('Alice');
-    expect(state?.players.p2).toBeNull();
-    expect(state?.currentTurnPlayerId).toBe(host.playerId);
-
-    // Guest joins room
-    const guest = await joinGame(db, host.inviteCode, 'Bob');
-    expect(guest.playerId).toBeDefined();
-
-    state = await getGameStateSync(db, host.gameId);
-    expect(state?.status).toBe('IN_PROGRESS');
-    expect(state?.players.p2?.username).toBe('Bob');
-    expect(state?.mode).toBe('SPIN');
+    await db.execute("INSERT INTO users (id, username, created_at) VALUES (?, 'Alice', ?)", [PLAYER_ONE, Date.now()]);
+    await db.execute("INSERT INTO accounts (user_id, email, normalized_email, normalized_username, password_hash) VALUES (?, 'alice@example.test', 'alice@example.test', 'alice', 'test')", [PLAYER_ONE]);
+    await db.execute("INSERT INTO users (id, username, created_at) VALUES (?, 'Bob', ?)", [PLAYER_TWO, Date.now()]);
+    await db.execute("INSERT INTO accounts (user_id, email, normalized_email, normalized_username, password_hash) VALUES (?, 'bob@example.test', 'bob@example.test', 'bob', 'test')", [PLAYER_TWO]);
   });
 
   test('Wheel spin generates valid slice and question prompt', async () => {
-    const host = await createGame(db, 'Alice');
-    await joinGame(db, host.inviteCode, 'Bob');
-
-    const spin = await spinWheel(db, host.gameId, host.playerId);
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    const spin = await spinWheel(db, host.gameId, PLAYER_ONE);
     expect(spin.sliceIndex).toBeGreaterThanOrEqual(0);
     expect(spin.sliceIndex).toBeLessThanOrEqual(6);
     expect(spin.targetDegrees).toBeGreaterThan(360);
@@ -61,14 +43,13 @@ describe('Game Engine State Machine', () => {
       expect(state?.mode).toBe('QUESTION');
       expect(state?.activeQuestion?.options.length).toBe(4);
       expect(state?.activeQuestion?.category).toBe(spin.slice);
-      // Question should NOT expose secret correct answer or index
       expect(typeof state?.activeQuestion?.id).toBe('string');
     }
   });
 
+
   test('Correct answer increments crown gauge and retains turn', async () => {
-    const host = await createGame(db, 'Alice');
-    await joinGame(db, host.inviteCode, 'Bob');
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
 
     // Force a question state in DB
     const questionId = 'art_1';
@@ -95,20 +76,20 @@ describe('Game Engine State Machine', () => {
     );
 
     // Answer correctly (index 1)
-    const result = await answerQuestion(db, host.gameId, host.playerId, questionId, 1, 3500);
+    const result = await answerQuestion(db, host.gameId, PLAYER_ONE, questionId, 1, 3500);
     expect(result.wasCorrect).toBe(true);
     expect(result.turnContinued).toBe(true);
-    expect(result.nextPlayerId).toBe(host.playerId);
+    expect(result.nextPlayerId).toBe(PLAYER_ONE);
 
     const state = await getGameStateSync(db, host.gameId);
     expect(state?.players.p1.crownGauge).toBe(1);
-    expect(state?.currentTurnPlayerId).toBe(host.playerId);
+    expect(state?.currentTurnPlayerId).toBe(PLAYER_ONE);
     expect(state?.mode).toBe('SPIN');
   });
 
   test('Reaching 3 gauge points triggers CROWN_CHOICE', async () => {
-    const host = await createGame(db, 'Alice');
-    await joinGame(db, host.inviteCode, 'Bob');
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    
 
     // Set crown gauge already at 2
     await db.execute('UPDATE games SET crown_gauge = 2 WHERE id = ?', [host.gameId]);
@@ -136,7 +117,7 @@ describe('Game Engine State Machine', () => {
       [JSON.stringify(stored), host.gameId]
     );
 
-    const result = await answerQuestion(db, host.gameId, host.playerId, questionId, 2, 2000);
+    const result = await answerQuestion(db, host.gameId, PLAYER_ONE, questionId, 2, 2000);
     expect(result.wasCorrect).toBe(true);
 
     const state = await getGameStateSync(db, host.gameId);
@@ -145,13 +126,13 @@ describe('Game Engine State Machine', () => {
   });
 
   test('Crown claim awards character crown upon correct answer', async () => {
-    const host = await createGame(db, 'Alice');
-    await joinGame(db, host.inviteCode, 'Bob');
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    
 
     await db.execute(`UPDATE games SET active_mode = 'CROWN_CHOICE' WHERE id = ?`, [host.gameId]);
 
     // Alice chooses to claim HISTORY crown
-    await chooseCrown(db, host.gameId, host.playerId, 'claim', 'HISTORY');
+    await chooseCrown(db, host.gameId, PLAYER_ONE, 'claim', 'HISTORY');
 
     let state = await getGameStateSync(db, host.gameId);
     expect(state?.mode).toBe('QUESTION');
@@ -168,7 +149,7 @@ describe('Game Engine State Machine', () => {
     const result = await answerQuestion(
       db,
       host.gameId,
-      host.playerId,
+      PLAYER_ONE,
       stored.questionData.id,
       stored.correctIndex,
       1500
@@ -179,12 +160,11 @@ describe('Game Engine State Machine', () => {
 
     state = await getGameStateSync(db, host.gameId);
     expect(state?.players.p1.crowns).toContain('HISTORY');
-    expect(state?.currentTurnPlayerId).toBe(host.playerId); // Still Alice's turn
+    expect(state?.currentTurnPlayerId).toBe(PLAYER_ONE); // Still Alice's turn
   });
 
   test('Incorrect answer passes turn to opponent and resets gauge', async () => {
-    const host = await createGame(db, 'Alice');
-    const guest = await joinGame(db, host.inviteCode, 'Bob');
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
 
     await db.execute('UPDATE games SET crown_gauge = 2 WHERE id = ?', [host.gameId]);
 
@@ -212,36 +192,35 @@ describe('Game Engine State Machine', () => {
     );
 
     // Alice picks wrong answer (index 0)
-    const result = await answerQuestion(db, host.gameId, host.playerId, questionId, 0, 4000);
+    const result = await answerQuestion(db, host.gameId, PLAYER_ONE, questionId, 0, 4000);
     expect(result.wasCorrect).toBe(false);
     expect(result.turnContinued).toBe(false);
-    expect(result.nextPlayerId).toBe(guest.playerId);
+    expect(result.nextPlayerId).toBe(PLAYER_TWO);
 
     const state = await getGameStateSync(db, host.gameId);
     expect(state?.players.p1.crownGauge).toBe(0);
-    expect(state?.currentTurnPlayerId).toBe(guest.playerId);
+    expect(state?.currentTurnPlayerId).toBe(PLAYER_TWO);
     expect(state?.mode).toBe('SPIN');
   });
 
   test('Steal Challenge: challenger steals crown on correct answer', async () => {
-    const host = await createGame(db, 'Alice');
-    const guest = await joinGame(db, host.inviteCode, 'Bob');
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
 
     // Give Alice ART crown and Bob SCIENCE crown
     await db.execute(
       `INSERT INTO game_crowns (game_id, player_id, category, created_at)
        VALUES (?, ?, 'ART', ?), (?, ?, 'SCIENCE', ?)`,
-      [host.gameId, host.playerId, Date.now(), host.gameId, guest.playerId, Date.now()]
+      [host.gameId, PLAYER_ONE, Date.now(), host.gameId, PLAYER_TWO, Date.now()]
     );
 
     // Set Bob's turn in CROWN_CHOICE
     await db.execute(
       `UPDATE games SET current_turn_player_id = ?, active_mode = 'CROWN_CHOICE' WHERE id = ?`,
-      [guest.playerId, host.gameId]
+      [PLAYER_TWO, host.gameId]
     );
 
     // Bob challenges Alice for ART crown, wagering his SCIENCE crown
-    await chooseCrown(db, host.gameId, guest.playerId, 'steal', 'ART', 'SCIENCE');
+    await chooseCrown(db, host.gameId, PLAYER_TWO, 'steal', 'ART', 'SCIENCE');
 
     const gameRow = await db.queryFirst<{ active_question_json: string }>(
       'SELECT active_question_json FROM games WHERE id = ?',
@@ -254,7 +233,7 @@ describe('Game Engine State Machine', () => {
     const result = await answerQuestion(
       db,
       host.gameId,
-      guest.playerId,
+      PLAYER_TWO,
       stored.questionData.id,
       stored.correctIndex,
       2500
@@ -270,15 +249,15 @@ describe('Game Engine State Machine', () => {
   });
 
   test('6-Crown Victory concludes match with GAME_OVER', async () => {
-    const host = await createGame(db, 'Alice');
-    await joinGame(db, host.inviteCode, 'Bob');
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    
 
     // Give Alice 5 crowns already
     const fiveCrowns: Category[] = ['ART', 'SCIENCE', 'SPORTS', 'ENTERTAINMENT', 'GEOGRAPHY'];
     for (const c of fiveCrowns) {
       await db.execute(
         'INSERT INTO game_crowns (game_id, player_id, category, created_at) VALUES (?, ?, ?, ?)',
-        [host.gameId, host.playerId, c, Date.now()]
+        [host.gameId, PLAYER_ONE, c, Date.now()]
       );
     }
 
@@ -306,25 +285,24 @@ describe('Game Engine State Machine', () => {
       [JSON.stringify(stored), host.gameId]
     );
 
-    await answerQuestion(db, host.gameId, host.playerId, 'his_1', 1, 2000);
+    await answerQuestion(db, host.gameId, PLAYER_ONE, 'his_1', 1, 2000);
 
     const state = await getGameStateSync(db, host.gameId);
     expect(state?.status).toBe('COMPLETED');
     expect(state?.mode).toBe('GAME_OVER');
-    expect(state?.winnerId).toBe(host.playerId);
+    expect(state?.winnerId).toBe(PLAYER_ONE);
     expect(state?.players.p1.crowns.length).toBe(6);
   });
 
   test('Resignation surrenders match to opponent', async () => {
-    const host = await createGame(db, 'Alice');
-    const guest = await joinGame(db, host.inviteCode, 'Bob');
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
 
-    await resignGame(db, host.gameId, host.playerId);
+    await resignGame(db, host.gameId, PLAYER_ONE);
 
     const state = await getGameStateSync(db, host.gameId);
     expect(state?.status).toBe('COMPLETED');
     expect(state?.mode).toBe('GAME_OVER');
-    expect(state?.winnerId).toBe(guest.playerId);
+    expect(state?.winnerId).toBe(PLAYER_TWO);
     expect(state?.winReason).toBe('Opponent surrendered');
   });
 });

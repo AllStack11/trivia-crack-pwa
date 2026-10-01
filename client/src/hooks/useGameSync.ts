@@ -11,8 +11,9 @@ import type {
 
 interface UseGameSyncOptions {
   gameId: string | null;
-  playerId: string | null;
-  playerToken: string | null;
+  accountId: string | null;
+  sessionToken: string | null;
+  onUnauthorized?: () => void;
   initialState?: GameStateSync | null;
 }
 
@@ -33,249 +34,158 @@ interface UseGameSyncReturn {
 
 export function useGameSync({
   gameId,
-  playerId,
-  playerToken,
+  accountId,
+  sessionToken,
+  onUnauthorized,
   initialState = null
 }: UseGameSyncOptions): UseGameSyncReturn {
   const [gameState, setGameState] = useState<GameStateSync | null>(initialState);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(!initialState && Boolean(gameId));
   const [error, setError] = useState<string | null>(null);
-
   const [targetDegrees, setTargetDegrees] = useState<number | undefined>(undefined);
   const [lastSpinSlice, setLastSpinSlice] = useState<string | undefined>(undefined);
   const [lastResult, setLastResult] = useState<QuestionResult | undefined>(undefined);
-
   const eventSourceRef = useRef<EventSource | null>(null);
   const backoffRef = useRef<number>(1000);
-
   const reconnectTimeoutRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    setGameState(initialState);
+    setLoading(!initialState && Boolean(gameId));
+    setError(null);
+    setLastResult(undefined);
+    setTargetDegrees(undefined);
+    setLastSpinSlice(undefined);
+  }, [gameId, initialState]);
+
+  const authenticatedFetch = useCallback((path: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers);
+    if (sessionToken) headers.set('Authorization', `Bearer ${sessionToken}`);
+    return fetch(apiUrl(path), { ...init, headers });
+  }, [sessionToken]);
+
   const refresh = useCallback(async () => {
-    if (!gameId) return;
+    if (!gameId || !sessionToken) return;
     try {
-      const res = await fetch(apiUrl(`/api/games/${gameId}`));
-      if (res.ok) {
-        const data = (await res.json()) as GameStateSync;
+      const res = await authenticatedFetch(`/api/games/${encodeURIComponent(gameId)}`);
+      if (res.status === 401) {
+        setError('Your session has expired. Please log in again.');
+        onUnauthorized?.();
+      } else if (res.ok) {
+        const data = await res.json() as GameStateSync;
         setGameState(data);
-        if (data.lastResult) {
-          setLastResult(data.lastResult);
-        }
+        if (data.lastResult) setLastResult(data.lastResult);
         setError(null);
       } else {
-        setError('Match not found');
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setError(data.error || 'Could not load this match');
       }
     } catch {
       setError('Connection disrupted');
-    } finally {
-      setLoading(false);
-    }
-  }, [gameId]);
+    } finally { setLoading(false); }
+  }, [gameId, sessionToken, authenticatedFetch, onUnauthorized]);
 
-  // Connect to SSE stream
   useEffect(() => {
-    if (!gameId || !playerToken) {
+    if (!gameId || !sessionToken) {
       setIsConnected(false);
+      setLoading(Boolean(gameId));
       return;
     }
-
     let isMounted = true;
-
     const connectSSE = () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-
-      const sseUrl = apiUrl(`/api/games/${gameId}/events?token=${encodeURIComponent(playerToken)}`);
+      eventSourceRef.current?.close();
+      const sseUrl = apiUrl(`/api/games/${encodeURIComponent(gameId)}/events?session=${encodeURIComponent(sessionToken)}`);
       const es = new EventSource(sseUrl);
       eventSourceRef.current = es;
-
       es.onopen = () => {
         if (!isMounted) return;
-        setIsConnected(true);
-        setError(null);
-        backoffRef.current = 1000; // Reset backoff on successful connect
+        setIsConnected(true); setError(null); backoffRef.current = 1000;
       };
-
-      es.addEventListener('sync', (e) => {
+      es.addEventListener('sync', (event) => {
         if (!isMounted) return;
         try {
-          const fresh = JSON.parse(e.data) as GameStateSync;
+          const fresh = JSON.parse(event.data) as GameStateSync;
           setGameState(fresh);
-          if (fresh.lastResult) {
-            setLastResult(fresh.lastResult);
-          }
-          if (fresh.lastSpin) {
-            setTargetDegrees(fresh.lastSpin.targetDegrees);
-            setLastSpinSlice(fresh.lastSpin.slice);
-          }
+          if (fresh.lastResult) setLastResult(fresh.lastResult);
+          if (fresh.lastSpin) { setTargetDegrees(fresh.lastSpin.targetDegrees); setLastSpinSlice(fresh.lastSpin.slice); }
           setLoading(false);
-        } catch {
-          // Ignore JSON parse error
-        }
+        } catch { /* Ignore malformed sync events. */ }
       });
-
       es.onerror = () => {
         if (!isMounted) return;
-        setIsConnected(false);
-        es.close();
-
-        // Auto-reconnect with exponential backoff
+        setIsConnected(false); es.close();
         const timeout = Math.min(backoffRef.current, 10000);
         backoffRef.current *= 1.5;
-
         reconnectTimeoutRef.current = window.setTimeout(() => {
-          if (isMounted) {
-            connectSSE();
-            refresh();
-          }
+          if (isMounted) { connectSSE(); void refresh(); }
         }, timeout);
       };
     };
-
     connectSSE();
-
-    // Secondary backup polling every 4 seconds to protect mobile tabs
-    const pollInterval = setInterval(() => {
-      if (isMounted && (!eventSourceRef.current || eventSourceRef.current.readyState !== EventSource.OPEN)) {
-        refresh();
-      }
+    const pollInterval = window.setInterval(() => {
+      if (isMounted && (!eventSourceRef.current || eventSourceRef.current.readyState !== EventSource.OPEN)) void refresh();
     }, 4000);
-
     return () => {
       isMounted = false;
-      clearInterval(pollInterval);
-      clearTimeout(reconnectTimeoutRef.current);
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
+      window.clearInterval(pollInterval);
+      window.clearTimeout(reconnectTimeoutRef.current);
+      eventSourceRef.current?.close();
     };
-  }, [gameId, playerToken, refresh]);
+  }, [gameId, sessionToken, refresh]);
 
-  // Spin Action
+  const reportActionFailure = useCallback(async (res: Response) => {
+    const data = await res.json().catch(() => ({})) as { error?: string };
+    if (res.status === 401) {
+      setError('Your session has expired. Please log in again.');
+      onUnauthorized?.();
+    } else setError(data.error || 'The game action failed');
+  }, [onUnauthorized]);
+
   const spin = useCallback(async (): Promise<SpinResponse | null> => {
-    if (!gameId || !playerId) return null;
+    if (!gameId || !accountId || !sessionToken) return null;
     try {
-      const res = await fetch(apiUrl(`/api/games/${gameId}/spin`), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-player-id': playerId
-        }
-      });
+      const res = await authenticatedFetch(`/api/games/${encodeURIComponent(gameId)}/spin`, { method: 'POST' });
+      if (!res.ok) { await reportActionFailure(res); return null; }
+      const data = await res.json() as SpinResponse;
+      setTargetDegrees(data.targetDegrees); setLastSpinSlice(data.slice); setGameState(data.state); setLastResult(undefined); setError(null);
+      return data;
+    } catch { setError('Connection disrupted'); return null; }
+  }, [gameId, accountId, sessionToken, authenticatedFetch, reportActionFailure]);
 
-      if (res.ok) {
-        const data = (await res.json()) as SpinResponse;
-        setTargetDegrees(data.targetDegrees);
-        setLastSpinSlice(data.slice);
-        setGameState(data.state);
-        setLastResult(undefined);
-        return data;
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }, [gameId, playerId]);
-
-  // Answer Action
-  const answer = useCallback(
-    async (questionId: string, answerIndex: number, timeSpentMs: number): Promise<QuestionResult | null> => {
-      if (!gameId || !playerId) return null;
-      try {
-        const body: AnswerQuestionRequest = {
-          questionId,
-          answerIndex,
-          timeSpentMs
-        };
-
-        const res = await fetch(apiUrl(`/api/games/${gameId}/answer`), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-player-id': playerId
-          },
-          body: JSON.stringify(body)
-        });
-
-        if (res.ok) {
-          const data = (await res.json()) as { result: QuestionResult; state: GameStateSync };
-          setLastResult(data.result);
-          setGameState(data.state);
-          return data.result;
-        }
-        return null;
-      } catch {
-        return null;
-      }
-    },
-    [gameId, playerId]
-  );
-
-  // Crown Choice Action
-  const chooseCrown = useCallback(
-    async (action: 'claim' | 'steal', category: Category, wagerCategory?: Category): Promise<boolean> => {
-      if (!gameId || !playerId) return false;
-      try {
-        const body: CrownChoiceRequest = {
-          action,
-          category,
-          wagerCategory
-        };
-
-        const res = await fetch(apiUrl(`/api/games/${gameId}/crown`), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-player-id': playerId
-          },
-          body: JSON.stringify(body)
-        });
-
-        if (res.ok) {
-          const fresh = (await res.json()) as GameStateSync;
-          setGameState(fresh);
-          return true;
-        }
-        return false;
-      } catch {
-        return false;
-      }
-    },
-    [gameId, playerId]
-  );
-
-  // Resign Action
-  const resign = useCallback(async (): Promise<void> => {
-    if (!gameId || !playerId) return;
+  const answer = useCallback(async (questionId: string, answerIndex: number, timeSpentMs: number): Promise<QuestionResult | null> => {
+    if (!gameId || !accountId || !sessionToken) return null;
     try {
-      const res = await fetch(apiUrl(`/api/games/${gameId}/resign`), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-player-id': playerId
-        }
+      const body: AnswerQuestionRequest = { questionId, answerIndex, timeSpentMs };
+      const res = await authenticatedFetch(`/api/games/${encodeURIComponent(gameId)}/answer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
       });
-      if (res.ok) {
-        const fresh = (await res.json()) as GameStateSync;
-        setGameState(fresh);
-      }
-    } catch {
-      // Ignore
-    }
-  }, [gameId, playerId]);
+      if (!res.ok) { await reportActionFailure(res); return null; }
+      const data = await res.json() as { result: QuestionResult; state: GameStateSync };
+      setLastResult(data.result); setGameState(data.state); setError(null); return data.result;
+    } catch { setError('Connection disrupted'); return null; }
+  }, [gameId, accountId, sessionToken, authenticatedFetch, reportActionFailure]);
 
-  return {
-    gameState,
-    isConnected,
-    loading,
-    error,
-    targetDegrees,
-    lastSpinSlice,
-    lastResult,
-    spin,
-    answer,
-    chooseCrown,
-    resign,
-    refresh
-  };
+  const chooseCrown = useCallback(async (action: 'claim' | 'steal', category: Category, wagerCategory?: Category): Promise<boolean> => {
+    if (!gameId || !accountId || !sessionToken) return false;
+    try {
+      const body: CrownChoiceRequest = { action, category, wagerCategory };
+      const res = await authenticatedFetch(`/api/games/${encodeURIComponent(gameId)}/crown`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      if (!res.ok) { await reportActionFailure(res); return false; }
+      setGameState(await res.json() as GameStateSync); setError(null); return true;
+    } catch { setError('Connection disrupted'); return false; }
+  }, [gameId, accountId, sessionToken, authenticatedFetch, reportActionFailure]);
+
+  const resign = useCallback(async () => {
+    if (!gameId || !accountId || !sessionToken) return;
+    try {
+      const res = await authenticatedFetch(`/api/games/${encodeURIComponent(gameId)}/resign`, { method: 'POST' });
+      if (!res.ok) { await reportActionFailure(res); return; }
+      setGameState(await res.json() as GameStateSync); setError(null);
+    } catch { setError('Connection disrupted'); }
+  }, [gameId, accountId, sessionToken, authenticatedFetch, reportActionFailure]);
+
+  return { gameState, isConnected, loading, error, targetDegrees, lastSpinSlice, lastResult, spin, answer, chooseCrown, resign, refresh };
 }

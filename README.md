@@ -31,8 +31,7 @@ A mobile-first Progressive Web App (PWA) clone of Trivia Crack built for friends
   - JSON Import / Export matching standard format.
 - **Synthesized Audio Engine**:
   - Pure Web Audio API oscillators for wheel ticks, button pops, correct chimes, incorrect buzzers, and victory fanfare. Zero external MP3 downloads required.
-- **PWA Ready**:
-  - Service Worker with offline caching, web app manifest, maskable SVG icons, installable on iOS and Android.
+- **Account-Based Matchmaking**: Email/password accounts, player discovery, accepted invitations, persistent match lists, and account-owned turn-based games.
 
 ---
 
@@ -42,7 +41,7 @@ A mobile-first Progressive Web App (PWA) clone of Trivia Crack built for friends
   - **Local Development**: Runs natively on Bun (`bun run server/src/bunServer.ts`) on port 3001 with built-in SQLite (`bun:sqlite`).
   - **Production Edge**: Compiles directly to Cloudflare Workers with native Cloudflare D1 serverless SQLite binding (`env.DB`).
   - **Realtime Sync**: Server-Sent Events (`/api/games/:gameId/events`) for instantaneous multiplayer push.
-- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS v4 + Lucide Icons + PWA Service Worker (deployable to Cloudflare Pages for unlimited free CDN bandwidth).
+- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS + PWA Service Worker (deployable to Cloudflare Pages).
 
 ---
 
@@ -58,6 +57,8 @@ cd client && bun run dev
 # 3. Open browser at http://localhost:5173
 ```
 
+Create an account with a unique username, email, and password (minimum 8 characters). Find a player in the dashboard, select question packs, and send an invitation; the recipient must accept before the match starts. Sign-in persists across games, and match history is tied to the account. Email verification and password recovery are not available.
+
 ---
 
 ## Running Automated Tests
@@ -65,7 +66,7 @@ cd client && bun run dev
 ```bash
 bun test
 ```
-Runs the full automated test suite covering game creation, join lifecycle, wheel spin category calculation, crown gauge progression, crown claim/steal mechanics, win conditions, pack import/export, and OpenTDB entity decoding.
+Runs engine rules, account/session and invitation boundaries, pack import/export, and OpenTDB decoding.
 
 ---
 
@@ -76,8 +77,8 @@ Runs the full automated test suite covering game creation, join lifecycle, wheel
 # Create D1 database
 npx wrangler d1 create triviaclash-db
 
-# Run schema migrations on Cloudflare D1
-npx wrangler d1 execute triviaclash-db --remote --file=server/src/db/schema.sql
+# Apply the account and invitation migration to an existing D1 database
+npx wrangler d1 migrations apply triviaclash-db --remote
 
 # Deploy Worker
 cd server && npx wrangler deploy

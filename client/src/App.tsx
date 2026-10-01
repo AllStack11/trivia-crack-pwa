@@ -12,7 +12,10 @@ import PackCreator from './components/PackCreator';
 import QuestionView from './components/QuestionView';
 import Wheel from './components/Wheel';
 import { useGameSync } from './hooks/useGameSync';
-import { playButtonPop, playFanfare, playCorrectChime } from './utils/audio';
+import type { AccountSession } from './components/Lobby';
+import { apiUrl } from './utils/api';
+
+import { playFanfare, playCorrectChime } from './utils/audio';
 import confetti from 'canvas-confetti';
 import { Ssgoi, type SsgoiConfig } from '@ssgoi/react';
 import { drill, sheet, fade } from '@ssgoi/react/view-transitions';
@@ -32,9 +35,8 @@ const ssgoiConfig: SsgoiConfig = {
 export default function App() {
   const [view, setView] = useState<AppView>('LOBBY');
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
-  const [myPlayerToken, setMyPlayerToken] = useState<string | null>(null);
-  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+  const [account, setAccount] = useState<AccountSession | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Wheel animation control state to prevent skipping the spinner
   const [isWheelSpinning, setIsWheelSpinning] = useState<boolean>(false);
@@ -49,55 +51,93 @@ export default function App() {
   } | null>(null);
   const resultReviewTimerRef = useRef<number | undefined>(undefined);
 
-  // Auto-restore session from sessionStorage if available
+  // Restore credentials only after the server confirms the account session.
   useEffect(() => {
-    try {
-      const savedSession = sessionStorage.getItem('trivia_clash_session');
-      if (savedSession) {
-        const { gameId, playerId, playerToken } = JSON.parse(savedSession);
-        if (gameId && playerId && playerToken) {
-          setActiveGameId(gameId);
-          setMyPlayerId(playerId);
-          setMyPlayerToken(playerToken);
-          setView('GAME');
-          window.history.replaceState(null, '', `/game/${gameId}`);
+    let mounted = true;
+    const restore = async () => {
+      try {
+        const raw = localStorage.getItem('trivia_clash_account');
+        if (raw) {
+          const saved = JSON.parse(raw) as AccountSession;
+          if (saved.id && saved.username && saved.token) {
+            const response = await fetch(apiUrl('/api/me'), {
+              headers: { Authorization: `Bearer ${saved.token}` }
+            });
+            if (response.ok) {
+              const data = await response.json() as { account: { id: string; username: string } };
+              if (mounted) {
+                setAccount({ ...data.account, token: saved.token });
+                if (window.location.pathname.startsWith('/game/')) {
+                  setActiveGameId(decodeURIComponent(window.location.pathname.slice('/game/'.length)));
+                  setView('GAME');
+                } else if (window.location.pathname === '/packs') setView('PACK_CREATOR');
+              }
+            } else localStorage.removeItem('trivia_clash_account');
+          } else localStorage.removeItem('trivia_clash_account');
         }
+      } catch {
+        localStorage.removeItem('trivia_clash_account');
+      } finally {
+        if (mounted) setAuthLoading(false);
       }
-    } catch {
-      // Ignore
-    }
+    };
+    void restore();
+    return () => { mounted = false; };
   }, []);
 
-  // Handle browser Back / Forward navigation
+  const handleAuth = (authenticated: AccountSession) => {
+    setAccount(authenticated);
+    try { localStorage.setItem('trivia_clash_account', JSON.stringify(authenticated)); } catch { /* Storage may be unavailable. */ }
+    if (window.location.pathname.startsWith('/game/')) {
+      const gameId = decodeURIComponent(window.location.pathname.slice('/game/'.length));
+      setActiveGameId(gameId);
+      setView('GAME');
+    } else if (window.location.pathname === '/packs') setView('PACK_CREATOR');
+  };
+
+  const handleLogout = useCallback(async () => {
+    if (account) {
+      try {
+        await fetch(apiUrl('/api/auth/logout'), { method: 'POST', headers: { Authorization: `Bearer ${account.token}` } });
+      } catch { /* Local credentials are cleared even when the network is unavailable. */ }
+    }
+    setAccount(null);
+    setActiveGameId(null);
+    setView('LOBBY');
+    localStorage.removeItem('trivia_clash_account');
+    window.history.pushState(null, '', '/');
+  }, [account]);
+
+  const handleUnauthorized = useCallback(() => {
+    setAccount(null);
+    setActiveGameId(null);
+    setView('LOBBY');
+    localStorage.removeItem('trivia_clash_account');
+    window.history.replaceState(null, '', '/');
+  }, []);
+
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname;
-      if (path === '/packs') {
-        setView('PACK_CREATOR');
-      } else if (path.startsWith('/game/')) {
-        setView('GAME');
-      } else {
-        setView('LOBBY');
-      }
+      if (path === '/packs') setView('PACK_CREATOR');
+      else if (path.startsWith('/game/')) {
+        const gameId = path.slice('/game/'.length);
+        if (gameId) { setActiveGameId(decodeURIComponent(gameId)); setView('GAME'); }
+      } else { setActiveGameId(null); setView('LOBBY'); }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   const {
-    gameState,
-    isConnected,
-    targetDegrees,
-    lastResult,
-    spin,
-    answer,
-    chooseCrown,
-    resign
+    gameState, isConnected, loading: gameLoading, error: gameError, targetDegrees, lastResult, spin, answer, chooseCrown, resign
   } = useGameSync({
     gameId: activeGameId,
-    playerId: myPlayerId,
-    playerToken: myPlayerToken
+    accountId: account?.id ?? null,
+    sessionToken: account?.token ?? null,
+    onUnauthorized: handleUnauthorized
   });
+
 
   // When spectator (Player 2) receives opponent's spin via SSE, trigger wheel animation
   useEffect(() => {
@@ -105,7 +145,7 @@ export default function App() {
 
     if (
       gameState.lastSpin &&
-      gameState.currentTurnPlayerId !== myPlayerId &&
+      gameState.currentTurnPlayerId !== account?.id &&
       lastAnimatedSpinRef.current !== gameState.lastSpin.targetDegrees
     ) {
       lastAnimatedSpinRef.current = gameState.lastSpin.targetDegrees;
@@ -113,13 +153,13 @@ export default function App() {
       setIsWheelSpinning(true);
       setLandedCategoryName(null);
     }
-  }, [gameState, myPlayerId]);
+  }, [gameState, account?.id]);
 
   // When spectator receives opponent's answer result via SSE, display result review for 3s
   useEffect(() => {
     if (
       gameState?.lastResult &&
-      gameState.currentTurnPlayerId !== myPlayerId &&
+      gameState.currentTurnPlayerId !== account?.id &&
       gameState.activeQuestion
     ) {
       setActiveReviewResult({
@@ -131,12 +171,12 @@ export default function App() {
         setActiveReviewResult(null);
       }, 3000);
     }
-  }, [gameState?.lastResult, gameState?.currentTurnPlayerId, gameState?.activeQuestion, myPlayerId]);
+  }, [gameState?.lastResult, gameState?.currentTurnPlayerId, gameState?.activeQuestion, account?.id]);
 
   // Handle Game Over victory sound & confetti
   useEffect(() => {
     if (gameState?.status === 'COMPLETED' && gameState.winnerId) {
-      if (gameState.winnerId === myPlayerId) {
+      if (gameState.winnerId === account?.id) {
         playFanfare();
         confetti({
           particleCount: 120,
@@ -145,27 +185,16 @@ export default function App() {
         });
       }
     }
-  }, [gameState?.status, gameState?.winnerId, myPlayerId]);
+  }, [gameState?.status, gameState?.winnerId, account?.id]);
 
-  const handleGameJoined = (
-    gameId: string,
-    playerId: string,
-    playerToken: string
-  ) => {
+  const handleOpenGame = (gameId: string) => {
     setActiveGameId(gameId);
-    setMyPlayerId(playerId);
-    setMyPlayerToken(playerToken);
     setView('GAME');
-    window.history.pushState(null, '', `/game/${gameId}`);
-
-    try {
-      sessionStorage.setItem(
-        'trivia_clash_session',
-        JSON.stringify({ gameId, playerId, playerToken })
-      );
-    } catch {
-      // Ignore
-    }
+    setIsWheelSpinning(false);
+    setLandedCategoryName(null);
+    clearTimeout(resultReviewTimerRef.current);
+    setActiveReviewResult(null);
+    window.history.pushState(null, '', `/game/${encodeURIComponent(gameId)}`);
   };
 
   const handleNavigateToPacks = () => {
@@ -174,33 +203,15 @@ export default function App() {
   };
 
   const handleNavigateToLobby = () => {
-    if (gameState?.status === 'IN_PROGRESS') {
-      if (!confirm('Leave this game? You can resume it from the lobby.')) return;
-    }
-    try {
-      sessionStorage.removeItem('trivia_clash_session');
-    } catch {
-      // Ignore
-    }
+    if (gameState?.status === 'IN_PROGRESS' &&
+        !confirm('Leave this game? You can resume it from your matches.')) return;
     setActiveGameId(null);
-    setMyPlayerId(null);
-    setMyPlayerToken(null);
     setIsWheelSpinning(false);
     setLandedCategoryName(null);
     clearTimeout(resultReviewTimerRef.current);
     setActiveReviewResult(null);
     setView('LOBBY');
     window.history.pushState(null, '', '/');
-  };
-
-  const handleCopyInviteLink = () => {
-    if (!gameState) return;
-    const inviteUrl = `${window.location.origin}/?join=${gameState.inviteCode}`;
-    navigator.clipboard.writeText(inviteUrl).then(() => {
-      setCopiedLink(true);
-      playButtonPop();
-      setTimeout(() => setCopiedLink(false), 2500);
-    });
   };
 
   // User initiates wheel spin
@@ -250,7 +261,7 @@ export default function App() {
   };
 
   const isMyTurn = Boolean(
-    gameState && myPlayerId && gameState.currentTurnPlayerId === myPlayerId
+    gameState && account && gameState.currentTurnPlayerId === account.id
   );
 
   // Determine whether to display Wheel vs Question vs Crown Modal
@@ -288,15 +299,20 @@ export default function App() {
         {/* View: Lobby */}
         {view === 'LOBBY' && (
           <main className="flex-1 flex items-center justify-center py-2 animate-fade-in">
-            <Lobby
-              onGameJoined={handleGameJoined}
-              onOpenPackCreator={handleNavigateToPacks}
-            />
+            {authLoading ? <div className="text-sm text-slate-400">Restoring your account…</div> : (
+              <Lobby
+                account={account}
+                onAuth={handleAuth}
+                onLogout={handleLogout}
+                onOpenGame={handleOpenGame}
+                onOpenPackCreator={handleNavigateToPacks}
+              />
+            )}
           </main>
         )}
 
         {/* View: Active Game */}
-        {view === 'GAME' && gameState && (
+        {view === 'GAME' && account && gameState && (
           <div className="flex-1 flex flex-col max-w-md mx-auto w-full gap-1.5 sm:gap-2.5 h-full overflow-hidden justify-between animate-fade-in">
             {/* Room Header Bar */}
             <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs shrink-0">
@@ -308,8 +324,8 @@ export default function App() {
                   ← Lobby
                 </button>
                 <span className="text-slate-700">|</span>
-                <span className="font-mono font-bold text-yellow-400">
-                  {gameState.inviteCode}
+                <span className="font-bold text-yellow-400">
+                  vs. {gameState.players.p1.id === account.id ? gameState.players.p2?.username : gameState.players.p1.username}
                 </span>
               </div>
 
@@ -329,48 +345,15 @@ export default function App() {
                   </span>
                 </div>
 
-                {/* Share invite button */}
-                <button
-                  onClick={handleCopyInviteLink}
-                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg transition text-[11px] flex items-center gap-1 shadow"
-                >
-                  <span>{copiedLink ? '✓ Copied!' : '🔗 Invite'}</span>
-                </button>
               </div>
             </div>
+            {gameError && <div role="alert" className="p-2 bg-red-950/50 border border-red-800 rounded-xl text-xs text-red-300">{gameError}</div>}
 
             {/* Players Crown Status Bar */}
-            <CrownBar state={gameState} myPlayerId={myPlayerId || ''} />
+            <CrownBar state={gameState} myPlayerId={account.id} />
 
             {/* Center Stage: Wheel vs Question vs Crown Modal */}
             <div className="flex-1 min-h-0 flex flex-col justify-center items-center py-0.5 overflow-y-auto w-full">
-              {/* Status: WAITING FOR SECOND PLAYER */}
-              {gameState.status === 'WAITING' && (
-                <div className="w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center shadow-xl flex flex-col items-center gap-4 animate-scale-up">
-                  <div className="w-16 h-16 rounded-3xl bg-yellow-400/20 border border-yellow-400/40 flex items-center justify-center text-3xl shadow-inner animate-bounce">
-                    ⏳
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-white">Waiting for Challenger</h3>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Send this room code or link to a friend to duel!
-                    </p>
-                  </div>
-
-                  <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-between w-full">
-                    <span className="font-mono text-xl font-black text-yellow-400 tracking-wider">
-                      {gameState.inviteCode}
-                    </span>
-                    <button
-                      onClick={handleCopyInviteLink}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow transition"
-                    >
-                      {copiedLink ? 'Copied Link!' : 'Copy Link 📋'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* Mode: WHEEL SPINNING */}
               {shouldShowWheel && (
                 <div className="w-full flex flex-col items-center justify-center animate-fade-in relative">
@@ -415,7 +398,7 @@ export default function App() {
               {shouldShowCrownModal && (
                 <CrownModal
                   state={gameState}
-                  myPlayerId={myPlayerId || ''}
+                  myPlayerId={account.id}
                   onChooseCrown={(action, category, wagerCategory) => {
                     chooseCrown(action, category, wagerCategory);
                   }}
@@ -428,7 +411,7 @@ export default function App() {
                   <div className="text-5xl animate-bounce">🏆</div>
                   <div>
                     <h2 className="text-2xl font-black text-white">
-                      {gameState.winnerId === myPlayerId
+                      {gameState.winnerId === account.id
                         ? 'Victory is Yours!'
                         : `${
                             gameState.winnerId === gameState.players.p1.id
@@ -495,6 +478,12 @@ export default function App() {
               </div>
             )}
           </div>
+        )}
+
+        {view === 'GAME' && account && !gameState && (
+          <main className="flex-1 flex items-center justify-center text-sm text-slate-400">
+            {gameError || (gameLoading ? 'Loading match…' : 'Match unavailable')}
+          </main>
         )}
 
         {/* Footer */}

@@ -3,6 +3,7 @@ export interface AppDatabase {
   queryFirst<T = unknown>(sql: string, params?: unknown[]): Promise<T | null>;
   execute(sql: string, params?: unknown[]): Promise<{ rowsAffected: number }>;
   exec(sql: string): Promise<void>;
+  batch(statements: Array<{ sql: string; params?: unknown[] }>): Promise<void>;
 }
 
 // Minimal interface for Cloudflare D1 Database binding
@@ -18,6 +19,7 @@ export interface CloudflareD1Database {
     run(): Promise<{ meta?: { changes?: number } }>;
   };
   exec(query: string): Promise<unknown>;
+  batch(statements: Array<{ run(): Promise<unknown> }>): Promise<unknown>;
 }
 
 // In-memory or shared instance for local dev
@@ -90,6 +92,42 @@ CREATE TABLE IF NOT EXISTS game_answers (
   created_at INTEGER NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_questions_pack_cat ON questions(pack_id, category);
+CREATE INDEX IF NOT EXISTS idx_game_crowns_lookup ON game_crowns(game_id, player_id);
+CREATE INDEX IF NOT EXISTS idx_game_answers_lookup ON game_answers(game_id, player_id);
+CREATE TABLE IF NOT EXISTS accounts (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  normalized_email TEXT NOT NULL UNIQUE,
+  normalized_username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS game_invitations (
+  id TEXT PRIMARY KEY,
+  sender_id TEXT NOT NULL REFERENCES accounts(user_id),
+  recipient_id TEXT NOT NULL REFERENCES accounts(user_id),
+  status TEXT NOT NULL CHECK(status IN ('PENDING', 'ACCEPTED', 'DECLINED')),
+  pack_ids_json TEXT NOT NULL DEFAULT '["default"]',
+  game_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_accounts_username ON accounts(normalized_username);
+CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(normalized_email);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_expiry ON auth_sessions(user_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_invitations_recipient_status ON game_invitations(recipient_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_invitations_pair_status ON game_invitations(sender_id, recipient_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invites_pending_pair ON game_invitations(sender_id, recipient_id) WHERE status = 'PENDING';
+CREATE INDEX IF NOT EXISTS idx_games_players_updated ON games(player1_id, player2_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_games_invite ON games(invite_code);
 CREATE INDEX IF NOT EXISTS idx_questions_pack_cat ON questions(pack_id, category);
 CREATE INDEX IF NOT EXISTS idx_game_crowns_lookup ON game_crowns(game_id, player_id);
@@ -118,6 +156,13 @@ export function createD1Database(d1: CloudflareD1Database): AppDatabase {
     },
     async exec(sql: string): Promise<void> {
       await d1.exec(sql);
+    },
+    async batch(statements: Array<{ sql: string; params?: unknown[] }>): Promise<void> {
+      const prepared = statements.map(({ sql, params = [] }) => {
+        const stmt = d1.prepare(sql);
+        return params.length > 0 ? stmt.bind(...params) : stmt;
+      });
+      await d1.batch(prepared);
     }
   };
 }
@@ -161,6 +206,18 @@ export async function createBunDatabase(filename: string = 'trivia-clash.sqlite'
     },
     async exec(sql: string): Promise<void> {
       db.exec(sql);
+    },
+    async batch(statements: Array<{ sql: string; params?: unknown[] }>): Promise<void> {
+      db.exec('BEGIN');
+      try {
+        for (const { sql, params = [] } of statements) {
+          db.query(sql).run(...(params as (string | number | boolean | null)[]));
+        }
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
     }
   };
 }
@@ -181,10 +238,12 @@ export async function getDatabase(env?: { DB?: CloudflareD1Database }): Promise<
 
   // Auto-migrate schema on local startup
   await localDbInstance.exec(SCHEMA_SQL);
-  try {
-    await localDbInstance.execute('ALTER TABLE games ADD COLUMN last_spin_json TEXT;');
-  } catch {
-    // Already exists
+  for (const column of ['winner_id', 'win_reason', 'last_spin_json']) {
+    try {
+      await localDbInstance.execute(`ALTER TABLE games ADD COLUMN ${column} TEXT;`);
+    } catch {
+      // Column already exists.
+    }
   }
   return localDbInstance;
 }

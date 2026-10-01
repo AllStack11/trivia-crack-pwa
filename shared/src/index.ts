@@ -141,7 +141,6 @@ export interface QuestionResult {
 
 export interface GameStateSync {
   id: string;
-  inviteCode: string;
   status: GameStatus;
   players: {
     p1: PlayerState;
@@ -198,28 +197,55 @@ export interface QuestionPackMeta {
 }
 
 // Request / Response payloads
-export interface CreateGameRequest {
+export interface AuthCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest extends AuthCredentials {
   username: string;
+}
+
+export interface AuthResponse {
+  account: AccountSummary;
+  token: string;
+}
+
+export interface AccountSummary {
+  id: string;
+  username: string;
+}
+
+export type PlayerSummary = AccountSummary;
+
+export interface InvitationSummary {
+  id: string;
+  sender: AccountSummary;
+  recipient: AccountSummary;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
+  createdAt: number;
+  gameId: string | null;
+}
+
+export interface SendInvitationRequest {
+  recipientId: string;
   packIds?: string[];
 }
 
-export interface CreateGameResponse {
-  gameId: string;
-  inviteCode: string;
-  playerId: string;
-  playerToken: string;
-  state: GameStateSync;
+export interface RespondInvitationRequest {
+  decision: 'accept' | 'decline';
 }
 
-export interface JoinGameRequest {
-  username: string;
+export interface MatchSummary {
+  gameId: string;
+  opponent: AccountSummary;
+  status: GameStatus;
+  currentTurn: AccountSummary;
+  updatedAt: number;
 }
 
-export interface JoinGameResponse {
-  gameId: string;
-  playerId: string;
-  playerToken: string;
-  state: GameStateSync;
+export interface GameListResponse {
+  matches: MatchSummary[];
 }
 
 export interface SpinResponse {
@@ -240,3 +266,4 @@ export interface CrownChoiceRequest {
   category: Category;
   wagerCategory?: Category;
 }
+

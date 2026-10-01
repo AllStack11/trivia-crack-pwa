@@ -59,17 +59,6 @@ const ALL_CATEGORIES: Category[] = [
   'HISTORY'
 ];
 
-/**
- * Helper to generate random room codes e.g. TRIV-4K9P
- */
-export function generateInviteCode(): string {
-  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let code = 'TRIV-';
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
 
 /**
  * Fisher-Yates array shuffle
@@ -86,94 +75,31 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 /**
- * Create a new game room
+ * Create an account-owned two-player match.
  */
 export async function createGame(
   db: AppDatabase,
-  hostUsername: string,
+  player1Id: string,
+  player2Id: string,
   packIds: string[] = ['default']
-): Promise<{ gameId: string; inviteCode: string; playerId: string; playerToken: string }> {
-  const hostId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const cleanUsername = hostUsername.trim() || 'Player 1';
-
-  await db.execute(
-    'INSERT INTO users (id, username, created_at) VALUES (?, ?, ?)',
-    [hostId, cleanUsername, Date.now()]
+): Promise<{ gameId: string }> {
+  if (player1Id === player2Id) throw new Error('A match requires two different players');
+  const users = await db.query<{ id: string }>(
+    'SELECT id FROM users WHERE id IN (?, ?)',
+    [player1Id, player2Id]
   );
-
-  const gameId = `game_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  let inviteCode = generateInviteCode();
-
-  // Ensure unique invite code
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const existing = await db.queryFirst<DbGameRow>(
-      'SELECT id FROM games WHERE invite_code = ?',
-      [inviteCode]
-    );
-    if (!existing) break;
-    inviteCode = generateInviteCode();
-  }
-
+  if (users.length !== 2) throw new Error('Both players must have accounts');
+  const gameId = `game_${crypto.randomUUID()}`;
   const now = Date.now();
   await db.execute(
     `INSERT INTO games (
       id, invite_code, player1_id, player2_id, status, current_turn_player_id,
       crown_gauge, round_number, max_rounds, active_question_json, active_mode,
       winner_id, win_reason, pack_ids_json, last_result_json, created_at, updated_at
-    ) VALUES (?, ?, ?, NULL, 'WAITING', ?, 0, 1, 25, NULL, 'SPIN', NULL, NULL, ?, NULL, ?, ?)`,
-    [gameId, inviteCode, hostId, hostId, JSON.stringify(packIds), now, now]
+    ) VALUES (?, ?, ?, ?, 'IN_PROGRESS', ?, 0, 1, 25, NULL, 'SPIN', NULL, NULL, ?, NULL, ?, ?)`,
+    [gameId, `LEGACY-${crypto.randomUUID()}`, player1Id, player2Id, player1Id, JSON.stringify(packIds.length ? packIds : ['default']), now, now]
   );
-
-  return {
-    gameId,
-    inviteCode,
-    playerId: hostId,
-    playerToken: hostId
-  };
-}
-
-/**
- * Join an existing game room
- */
-export async function joinGame(
-  db: AppDatabase,
-  gameIdOrCode: string,
-  guestUsername: string
-): Promise<{ gameId: string; playerId: string; playerToken: string }> {
-  const game = await db.queryFirst<DbGameRow>(
-    'SELECT * FROM games WHERE id = ? OR invite_code = ?',
-    [gameIdOrCode, gameIdOrCode.toUpperCase()]
-  );
-
-  if (!game) {
-    throw new Error('Game room not found. Please check your room code.');
-  }
-
-  if (game.status !== 'WAITING') {
-    throw new Error('This match has already started or concluded.');
-  }
-
-  const guestId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const cleanUsername = guestUsername.trim() || 'Player 2';
-
-  await db.execute(
-    'INSERT INTO users (id, username, created_at) VALUES (?, ?, ?)',
-    [guestId, cleanUsername, Date.now()]
-  );
-
-  const now = Date.now();
-  await db.execute(
-    `UPDATE games
-     SET player2_id = ?, status = 'IN_PROGRESS', active_mode = 'SPIN', updated_at = ?
-     WHERE id = ?`,
-    [guestId, now, game.id]
-  );
-
-  return {
-    gameId: game.id,
-    playerId: guestId,
-    playerToken: guestId
-  };
+  return { gameId };
 }
 
 /**
@@ -734,7 +660,6 @@ export async function getGameStateSync(
 
   return {
     id: game.id,
-    inviteCode: game.invite_code,
     status: game.status,
     players: {
       p1: p1State,

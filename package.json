@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev:server": "bun --watch server/src/bunServer.ts",
-    "dev:client": "vite --config client/vite.config.ts client",
-    "build:client": "vite build --config client/vite.config.ts client",
-    "test": "bun test server/tests/engine.test.ts"
+    "dev:client": "bun run --cwd client dev",
+    "build:client": "bun run --cwd client build",
+    "test": "bun test server/tests"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
