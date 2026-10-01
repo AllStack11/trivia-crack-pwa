@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --color-trivia-art: #EF4444;
+  --color-trivia-science: #10B981;
+  --color-trivia-sports: #F97316;
+  --color-trivia-entertainment: #EC4899;
+  --color-trivia-geography: #3B82F6;
+  --color-trivia-history: #EAB308;
+  --color-trivia-crown: #F59E0B;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #0F172A;
+  color: #F8FAFC;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}

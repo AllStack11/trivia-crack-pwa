@@ -1,0 +1,238 @@
+export type Category = 'ART' | 'SCIENCE' | 'SPORTS' | 'ENTERTAINMENT' | 'GEOGRAPHY' | 'HISTORY';
+
+export type WheelSlice = Category | 'CROWN';
+
+export interface CategoryInfo {
+  id: Category;
+  name: string;
+  characterName: string;
+  characterTitle: string;
+  color: string;
+  accentColor: string;
+  textColor: string;
+  iconName: string;
+  description: string;
+}
+
+export const CATEGORIES: Record<Category, CategoryInfo> = {
+  ART: {
+    id: 'ART',
+    name: 'Art & Literature',
+    characterName: 'Arthur',
+    characterTitle: 'The Connoisseur',
+    color: '#EF4444',
+    accentColor: '#DC2626',
+    textColor: '#FFFFFF',
+    iconName: 'Palette',
+    description: 'Masterpieces, famous literature, architecture, and paintings'
+  },
+  SCIENCE: {
+    id: 'SCIENCE',
+    name: 'Science & Nature',
+    characterName: 'Albert',
+    characterTitle: 'The Professor',
+    color: '#10B981',
+    accentColor: '#059669',
+    textColor: '#FFFFFF',
+    iconName: 'Atom',
+    description: 'Physics, biology, space, technology, and natural wonders'
+  },
+  SPORTS: {
+    id: 'SPORTS',
+    name: 'Sports & Games',
+    characterName: 'Bonzo',
+    characterTitle: 'The Champion',
+    color: '#F97316',
+    accentColor: '#EA580C',
+    textColor: '#FFFFFF',
+    iconName: 'Trophy',
+    description: 'Athletics, world records, tournaments, and legendary players'
+  },
+  ENTERTAINMENT: {
+    id: 'ENTERTAINMENT',
+    name: 'Entertainment',
+    characterName: 'Pop',
+    characterTitle: 'The Star',
+    color: '#EC4899',
+    accentColor: '#DB2777',
+    textColor: '#FFFFFF',
+    iconName: 'Film',
+    description: 'Cinema, music hits, television shows, and pop culture'
+  },
+  GEOGRAPHY: {
+    id: 'GEOGRAPHY',
+    name: 'Geography & Travel',
+    characterName: 'Tina',
+    characterTitle: 'The Explorer',
+    color: '#3B82F6',
+    accentColor: '#2563EB',
+    textColor: '#FFFFFF',
+    iconName: 'Globe',
+    description: 'Capitals, flags, landmarks, continents, and terrains'
+  },
+  HISTORY: {
+    id: 'HISTORY',
+    name: 'World History',
+    characterName: 'Hector',
+    characterTitle: 'The Historian',
+    color: '#EAB308',
+    accentColor: '#CA8A04',
+    textColor: '#FFFFFF',
+    iconName: 'Hourglass',
+    description: 'Ancient empires, world wars, leaders, and historic milestones'
+  }
+};
+
+export const WHEEL_SLICES: WheelSlice[] = [
+  'GEOGRAPHY',
+  'SCIENCE',
+  'HISTORY',
+  'SPORTS',
+  'ART',
+  'ENTERTAINMENT',
+  'CROWN'
+];
+
+export type GameStatus = 'WAITING' | 'IN_PROGRESS' | 'COMPLETED';
+
+export type GameMode =
+  | 'SPIN'          // Active player needs to spin wheel
+  | 'SPINNING'      // Wheel is spinning
+  | 'QUESTION'      // Question active, 20s timer running
+  | 'CROWN_CHOICE'  // Active player chooses Claim or Steal
+  | 'RESULT'        // Brief answer result display before next step
+  | 'GAME_OVER';    // Game concluded
+
+export interface PlayerState {
+  id: string;
+  username: string;
+  crowns: Category[];
+  crownGauge: number; // 0 to 3 points
+  isConnected: boolean;
+  score: number; // total correct answers
+}
+
+export interface ActiveQuestionSync {
+  id: string;
+  category: Category;
+  question: string;
+  imageUrl?: string;
+  options: string[]; // 4 shuffled options
+  durationMs: number;
+  startedAt: number;
+  isCrown: boolean;
+  crownCategory?: Category;
+  isSteal?: boolean;
+  targetPlayerId?: string;
+  wagerCategory?: Category;
+}
+
+export interface QuestionResult {
+  wasCorrect: boolean;
+  correctIndex: number;
+  correctAnswer: string;
+  selectedOption?: string;
+  awardedCrown?: Category;
+  stolenCrown?: Category;
+  lostCrown?: Category;
+  nextPlayerId: string;
+  turnContinued: boolean;
+}
+
+export interface GameStateSync {
+  id: string;
+  inviteCode: string;
+  status: GameStatus;
+  players: {
+    p1: PlayerState;
+    p2: PlayerState | null;
+  };
+  currentTurnPlayerId: string;
+  roundNumber: number;
+  maxRounds: number;
+  mode: GameMode;
+  activeQuestion?: ActiveQuestionSync;
+  lastResult?: QuestionResult;
+  winnerId?: string;
+  winReason?: string;
+  updatedAt: number;
+}
+
+export interface QuestionData {
+  id: string;
+  packId: string;
+  category: Category;
+  question: string;
+  imageUrl?: string;
+  correctAnswer: string;
+  incorrectAnswers: string[];
+  difficulty: 'easy' | 'medium' | 'hard';
+}
+
+export interface QuestionPackExport {
+  id?: string;
+  title: string;
+  description?: string;
+  questions: Array<{
+    category: Category;
+    question: string;
+    imageUrl?: string;
+    correctAnswer: string;
+    incorrectAnswers: string[];
+    difficulty?: 'easy' | 'medium' | 'hard';
+  }>;
+}
+
+export interface QuestionPackMeta {
+  id: string;
+  title: string;
+  description: string;
+  isDefault: boolean;
+  questionCount: number;
+  createdBy?: string;
+  createdAt: number;
+}
+
+// Request / Response payloads
+export interface CreateGameRequest {
+  username: string;
+  packIds?: string[];
+}
+
+export interface CreateGameResponse {
+  gameId: string;
+  inviteCode: string;
+  playerId: string;
+  playerToken: string;
+  state: GameStateSync;
+}
+
+export interface JoinGameRequest {
+  username: string;
+}
+
+export interface JoinGameResponse {
+  gameId: string;
+  playerId: string;
+  playerToken: string;
+  state: GameStateSync;
+}
+
+export interface SpinResponse {
+  sliceIndex: number;
+  slice: WheelSlice;
+  targetDegrees: number;
+  state: GameStateSync;
+}
+
+export interface AnswerQuestionRequest {
+  questionId: string;
+  answerIndex: number;
+  timeSpentMs: number;
+}
+
+export interface CrownChoiceRequest {
+  action: 'claim' | 'steal';
+  category: Category;
+  wagerCategory?: Category;
+}

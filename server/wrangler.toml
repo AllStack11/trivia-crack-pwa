@@ -1,0 +1,10 @@
+name = "trivia-clash-server"
+main = "src/index.ts"
+compatibility_date = "2025-02-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "triviaclash-db"
+database_id = "86030aff-f7e5-4a3d-bdb9-ca2f08a612a3"
+migrations_dir = "src/db/migrations"

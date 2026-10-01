@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5" />
+      <stop offset="100%" stop-color="#7C3AED" />
+    </linearGradient>
+    <linearGradient id="crown" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047" />
+      <stop offset="100%" stop-color="#EAB308" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-opacity="0.35" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <circle cx="256" cy="256" r="176" fill="#1E1B4B" stroke="#6366F1" stroke-width="16" filter="url(#shadow)" />
+  <!-- Golden Crown -->
+  <path d="M160 320 L138 218 L202 256 L256 182 L310 256 L374 218 L352 320 Z" fill="url(#crown)" stroke="#CA8A04" stroke-width="10" stroke-linejoin="round" />
+  <circle cx="138" cy="214" r="14" fill="#EF4444" />
+  <circle cx="256" cy="178" r="16" fill="#10B981" />
+  <circle cx="374" cy="214" r="14" fill="#3B82F6" />
+  <circle cx="256" cy="294" r="10" fill="#FFFFFF" />
+</svg>
