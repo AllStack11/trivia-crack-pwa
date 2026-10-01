@@ -129,7 +129,7 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between p-3 sm:p-5">
+    <div className="h-[100dvh] max-h-[100dvh] bg-slate-950 text-slate-100 flex flex-col justify-between p-2 sm:p-4 overflow-hidden">
       {/* View: Pack Creator */}
       {view === 'PACK_CREATOR' && (
         <main className="flex-1 flex items-center justify-center py-4">
@@ -149,9 +149,9 @@ export default function App() {
 
       {/* View: Active Game */}
       {view === 'GAME' && gameState && (
-        <div className="flex-1 flex flex-col max-w-md mx-auto w-full gap-3">
+        <div className="flex-1 flex flex-col max-w-md mx-auto w-full gap-1.5 sm:gap-2.5 h-full overflow-hidden justify-between">
           {/* Room Header Bar */}
-          <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-2xl px-3.5 py-2 text-xs">
+          <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs shrink-0">
             <div className="flex items-center gap-2">
               <button
                 onClick={handleLeaveGame}
@@ -192,7 +192,8 @@ export default function App() {
           <CrownBar state={gameState} myPlayerId={myPlayerId || ''} />
 
           {/* Center Stage Based on Game State Mode */}
-          <div className="flex-1 flex flex-col justify-center items-center py-2">
+          {/* Center Stage Based on Game State Mode */}
+          <div className="flex-1 min-h-0 flex flex-col justify-center items-center py-0.5 overflow-y-auto w-full">
             {/* Status: WAITING FOR SECOND PLAYER */}
             {gameState.status === 'WAITING' && (
               <div className="w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center shadow-xl flex flex-col items-center gap-4">
@@ -320,7 +321,7 @@ export default function App() {
 
           {/* Resign / Surrender Button in footer when match is active */}
           {gameState.status === 'IN_PROGRESS' && (
-            <div className="flex justify-center pb-2">
+            <div className="flex justify-center shrink-0 py-0.5">
               <button
                 onClick={() => {
                   if (confirm('Are you sure you want to forfeit this match?')) {
@@ -337,7 +338,7 @@ export default function App() {
       )}
 
       {/* Footer */}
-      <footer className="text-center py-2 text-[11px] text-slate-600">
+      <footer className="text-center py-1 text-[10px] text-slate-600 shrink-0">
         Trivia Clash • Free Turn-Based Multiplayer PWA
       </footer>
     </div>

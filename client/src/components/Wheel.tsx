@@ -42,18 +42,19 @@ export default function Wheel({
   const lastPegCrossedRef = useRef<number>(-1);
   const [flapperDeflection, setFlapperDeflection] = useState<number>(0);
 
-  // Draw the entire wheel on canvas
+  // Draw the entire wheel on canvas proportionally to canvas size
   const drawWheel = useCallback((rotationAngleRad: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const width = canvas.width;
-    const height = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.width / dpr;
+    const height = canvas.height / dpr;
     const centerX = width / 2;
     const centerY = height / 2;
-    const radius = Math.min(centerX, centerY) - 16;
+    const radius = Math.min(centerX, centerY) - 10;
     const sliceCount = SLICE_CONFIGS.length;
     const sliceAngle = (2 * Math.PI) / sliceCount;
 
@@ -62,29 +63,35 @@ export default function Wheel({
     // Outer shadow / rim
     ctx.save();
     ctx.beginPath();
-    ctx.arc(centerX, centerY, radius + 10, 0, 2 * Math.PI);
+    ctx.arc(centerX, centerY, radius + 6, 0, 2 * Math.PI);
     ctx.fillStyle = '#1E1B4B';
     ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-    ctx.shadowBlur = 24;
-    ctx.shadowOffsetY = 8;
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 4;
     ctx.fill();
     ctx.restore();
 
     // Outer Golden Ring
     ctx.beginPath();
-    ctx.arc(centerX, centerY, radius + 8, 0, 2 * Math.PI);
+    ctx.arc(centerX, centerY, radius + 5, 0, 2 * Math.PI);
     const rimGrad = ctx.createLinearGradient(0, 0, width, height);
     rimGrad.addColorStop(0, '#FDE047');
     rimGrad.addColorStop(0.5, '#CA8A04');
     rimGrad.addColorStop(1, '#854D0E');
     ctx.strokeStyle = rimGrad;
-    ctx.lineWidth = 10;
+    ctx.lineWidth = Math.max(5, Math.round(radius * 0.05));
     ctx.stroke();
 
     // Rotate context for wedges
     ctx.save();
     ctx.translate(centerX, centerY);
     ctx.rotate(rotationAngleRad);
+
+    // Font metrics based on radius
+    const iconSize = Math.max(16, Math.round(radius * 0.16));
+    const labelSize = Math.max(8, Math.round(radius * 0.075));
+    const iconOffset = Math.round(radius * 0.15);
+    const labelOffset = Math.round(radius * 0.42);
 
     // Draw Slices
     for (let i = 0; i < sliceCount; i++) {
@@ -106,7 +113,7 @@ export default function Wheel({
 
       // Wedge divider line
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2;
       ctx.stroke();
 
       // Slice Content (Text & Icon)
@@ -117,15 +124,15 @@ export default function Wheel({
       ctx.textBaseline = 'middle';
 
       // Draw Icon
-      ctx.font = '28px sans-serif';
-      ctx.fillText(config.icon, radius - 22, 0);
+      ctx.font = `${iconSize}px sans-serif`;
+      ctx.fillText(config.icon, radius - iconOffset, 0);
 
       // Draw Label
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+      ctx.font = `bold ${labelSize}px system-ui, -apple-system, sans-serif`;
       ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-      ctx.shadowBlur = 4;
-      ctx.fillText(config.label, radius - 58, 0);
+      ctx.shadowBlur = 3;
+      ctx.fillText(config.label, radius - labelOffset, 0);
 
       ctx.restore();
     }
@@ -138,35 +145,45 @@ export default function Wheel({
       const py = Math.sin(pegAngle) * (radius + 2);
 
       ctx.beginPath();
-      ctx.arc(px, py, 4.5, 0, 2 * Math.PI);
+      ctx.arc(px, py, Math.max(2.5, radius * 0.025), 0, 2 * Math.PI);
       ctx.fillStyle = '#FEF08A';
       ctx.shadowColor = '#000000';
-      ctx.shadowBlur = 3;
+      ctx.shadowBlur = 2;
       ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(px, py, 2, 0, 2 * Math.PI);
+      ctx.arc(px, py, Math.max(1, radius * 0.012), 0, 2 * Math.PI);
       ctx.fillStyle = '#FFFFFF';
       ctx.fill();
     }
 
     ctx.restore(); // Restore translate & rotate
 
+    // Center Hub Metrics
+    const hubOuterRadius = Math.round(radius * 0.32);
+    const hubInnerRadius = Math.round(radius * 0.27);
+    const spinFontSize = Math.max(12, Math.round(radius * 0.12));
+
     // Center Hub Rim
     ctx.beginPath();
-    ctx.arc(centerX, centerY, 52, 0, 2 * Math.PI);
+    ctx.arc(centerX, centerY, hubOuterRadius, 0, 2 * Math.PI);
     ctx.fillStyle = '#0F172A';
     ctx.fill();
     ctx.strokeStyle = '#FDE047';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = Math.max(2, Math.round(radius * 0.025));
     ctx.stroke();
 
     // Center Hub Button
-    const hubGrad = ctx.createLinearGradient(centerX - 42, centerY - 42, centerX + 42, centerY + 42);
+    const hubGrad = ctx.createLinearGradient(
+      centerX - hubInnerRadius,
+      centerY - hubInnerRadius,
+      centerX + hubInnerRadius,
+      centerY + hubInnerRadius
+    );
     hubGrad.addColorStop(0, '#4F46E5');
     hubGrad.addColorStop(1, '#312E81');
     ctx.beginPath();
-    ctx.arc(centerX, centerY, 44, 0, 2 * Math.PI);
+    ctx.arc(centerX, centerY, hubInnerRadius, 0, 2 * Math.PI);
     ctx.fillStyle = hubGrad;
     ctx.fill();
 
@@ -174,29 +191,37 @@ export default function Wheel({
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = canSpin && !isSpinning ? '#FFFFFF' : '#94A3B8';
-    ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
+    ctx.font = `bold ${spinFontSize}px system-ui, -apple-system, sans-serif`;
     ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-    ctx.shadowBlur = 6;
+    ctx.shadowBlur = 4;
     ctx.fillText('SPIN', centerX, centerY);
   }, [canSpin, isSpinning]);
 
-  // Handle high DPI retina display sizing
-  useEffect(() => {
+  // Handle high DPI retina display sizing dynamically
+  const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
-    const size = Math.min(rect.width || 340, rect.height || 340, 380);
+    const size = Math.round(Math.min(rect.width || 260, rect.height || 260));
 
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
+    if (size > 0) {
+      canvas.width = size * dpr;
+      canvas.height = size * dpr;
 
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.scale(dpr, dpr);
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.scale(dpr, dpr);
+      }
+      drawWheel(currentRotationRef.current);
     }
-    drawWheel(currentRotationRef.current);
   }, [drawWheel]);
+
+  useEffect(() => {
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    return () => window.removeEventListener('resize', resizeCanvas);
+  }, [resizeCanvas]);
 
   // Run spin physics animation when targetDegrees is provided
   useEffect(() => {
@@ -217,7 +242,7 @@ export default function Wheel({
       const currentAngle = startAngle + deltaAngle * easeOut;
       currentRotationRef.current = currentAngle;
 
-      // Track peg crossing at top pointer (angle = 3 * PI / 2 or top pointer)
+      // Track peg crossing at top pointer
       const currentDeg = ((currentAngle * 180) / Math.PI) % 360;
       const pegIndex = Math.floor((currentDeg * 14) / 360);
 
@@ -262,53 +287,50 @@ export default function Wheel({
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-center p-2 select-none touch-manipulation">
+    <div className="relative flex flex-col items-center justify-center p-1 select-none touch-manipulation w-full">
       {/* Top Deflector Flapper */}
       <div
         className="absolute top-0 z-20 flex flex-col items-center transition-transform duration-75 origin-top pointer-events-none"
         style={{ transform: `rotate(${flapperDeflection}deg)` }}
       >
         {/* Flapper mount pin */}
-        <div className="w-5 h-5 rounded-full bg-yellow-400 border-2 border-yellow-600 shadow-md flex items-center justify-center">
-          <div className="w-2 h-2 rounded-full bg-slate-900" />
+        <div className="w-4 h-4 rounded-full bg-yellow-400 border-2 border-yellow-600 shadow-md flex items-center justify-center">
+          <div className="w-1.5 h-1.5 rounded-full bg-slate-900" />
         </div>
         {/* Flapper needle */}
-        <div
-          className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[22px] border-t-red-600 drop-shadow-md -mt-1"
-        />
+        <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[18px] border-t-red-600 drop-shadow-md -mt-1" />
       </div>
 
-      {/* Main Wheel Canvas */}
+      {/* Main Wheel Canvas with responsive constraints */}
       <div
-        className="relative cursor-pointer transition-transform active:scale-[0.98]"
+        className="relative cursor-pointer transition-transform active:scale-[0.98] w-[250px] h-[250px] xs:w-[275px] xs:h-[275px] sm:w-[320px] sm:h-[320px] max-w-[80vw] max-h-[46vh] flex items-center justify-center"
         onClick={handleCenterClick}
       >
         <canvas
           ref={canvasRef}
-          className="w-[330px] h-[330px] sm:w-[360px] sm:h-[360px] max-w-full drop-shadow-2xl"
-          style={{ width: '340px', height: '340px' }}
+          className="w-full h-full drop-shadow-xl rounded-full"
         />
 
-        {/* Pulse ring when canSpin */}
+        {/* Contained pulse glow ring when canSpin */}
         {canSpin && !isSpinning && (
-          <div className="absolute inset-0 rounded-full border-4 border-yellow-400/40 animate-ping pointer-events-none" />
+          <div className="absolute -inset-1 rounded-full border-2 border-yellow-400/60 shadow-[0_0_20px_rgba(250,204,21,0.35)] pointer-events-none animate-pulse" />
         )}
       </div>
 
-      {/* Helper caption */}
-      <div className="mt-3 text-center">
+      {/* Helper caption / spin trigger button */}
+      <div className="mt-2 text-center">
         {isSpinning ? (
-          <p className="text-sm font-semibold text-yellow-400 animate-pulse">Wheel is spinning...</p>
+          <p className="text-xs font-semibold text-yellow-400 animate-pulse">Wheel is spinning...</p>
         ) : canSpin ? (
           <button
             onClick={handleCenterClick}
-            className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold text-base rounded-full shadow-lg hover:shadow-yellow-500/25 transition-all transform active:scale-95 flex items-center gap-2"
+            className="px-5 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold text-xs sm:text-sm rounded-full shadow-md transition-all transform active:scale-95 flex items-center gap-1.5"
           >
             <span>Tap Center or Here to Spin</span>
             <span>🎲</span>
           </button>
         ) : (
-          <p className="text-xs text-slate-400">Waiting for opponent's move...</p>
+          <p className="text-[11px] text-slate-400">Waiting for opponent's move...</p>
         )}
       </div>
     </div>
