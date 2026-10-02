@@ -2,12 +2,15 @@ import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { streamSSE } from 'hono/streaming';
-import type {
-  AnswerQuestionRequest,
-  CrownChoiceRequest,
-  GameStateSync,
-  QuestionPackExport,
-  SpinResponse
+import {
+  CATEGORIES,
+  type AnswerQuestionRequest,
+  type Category,
+  type CrownChoiceRequest,
+  type ExpandPackRequest,
+  type GameStateSync,
+  type QuestionPackExport,
+  type SpinResponse
 } from '../../shared/src/index';
 import type { CloudflareD1Database } from './db/database';
 import { getDatabase } from './db/database';
@@ -23,12 +26,17 @@ import { isGameParticipant, listInvitations, listMatches, respondToInvitation, s
 import {
   createPack,
   deletePack,
+  expandPack,
   exportPack,
+  fetchLiveQuestions,
   getPack,
   importPack,
   listPacks
 } from './services/packService';
-
+import {
+  countDbCachedQuestionsByCategory,
+  memoryCache
+} from './services/questionCache';
 type Bindings = {
   DB?: CloudflareD1Database;
 };
@@ -328,6 +336,87 @@ app.post('/api/packs/import', async (c) => {
     const message = err instanceof Error ? err.message : 'Failed to import pack';
     return c.json({ error: message }, 400);
   }
+});
+
+// Expand Pack with Free Trivia APIs
+app.post('/api/packs/:packId/expand', async (c) => {
+  const db = await getDatabase(c.env);
+  const packId = c.req.param('packId');
+  const pack = await getPack(db, packId);
+  if (!pack) {
+    return c.json({ error: 'Pack not found' }, 404);
+  }
+
+  let body: ExpandPackRequest = {};
+  try {
+    body = (await c.req.json<ExpandPackRequest>().catch(() => ({}))) || {};
+  } catch {
+    body = {};
+  }
+
+  const countPerCategory = Math.min(Math.max(body.countPerCategory || 5, 1), 20);
+  const validCategories: Category[] = (body.categories || []).filter((cat): cat is Category =>
+    Object.hasOwn(CATEGORIES, cat)
+  );
+
+  const forceRefresh = body.forceRefresh === true || c.req.query('refresh') === 'true';
+
+  const result = await expandPack(
+    db,
+    packId,
+    countPerCategory,
+    validCategories.length > 0 ? validCategories : undefined,
+    forceRefresh
+  );
+
+  return c.json(result);
+});
+
+// Live Question Fetching from Free Trivia APIs with Multi-Tier Caching
+app.get('/api/questions/fetch', async (c) => {
+  const db = await getDatabase(c.env);
+  const categoryParam = c.req.query('category')?.toUpperCase() as Category;
+  const category: Category = Object.hasOwn(CATEGORIES, categoryParam)
+    ? categoryParam
+    : (['ART', 'SCIENCE', 'SPORTS', 'ENTERTAINMENT', 'GEOGRAPHY', 'HISTORY'][Math.floor(Math.random() * 6)] as Category);
+
+  const rawAmount = parseInt(c.req.query('amount') || '5', 10);
+  const amount = Number.isFinite(rawAmount) ? Math.min(Math.max(rawAmount, 1), 20) : 5;
+  const packId = c.req.query('packId') || 'default';
+  const refresh = c.req.query('refresh') === 'true';
+
+  const result = await fetchLiveQuestions(category, amount, packId, db, refresh);
+  const isHit = result.provider === 'cache:memory' || result.provider === 'cache:db';
+
+  c.header('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
+  c.header('X-Cache-Status', isHit ? 'HIT' : 'MISS');
+
+  return c.json({
+    questions: result.questions,
+    provider: result.provider,
+    cached: isHit
+  });
+});
+
+// Question Cache Monitoring & Statistics
+app.get('/api/questions/cache/stats', async (c) => {
+  const db = await getDatabase(c.env);
+  const memStats = memoryCache.getStats();
+  const dbCounts = await countDbCachedQuestionsByCategory(db);
+
+  return c.json({
+    inMemory: memStats.inMemoryCounts,
+    db: dbCounts,
+    hits: memStats.hits,
+    misses: memStats.misses,
+    hitRate: memStats.hitRate
+  });
+});
+
+// Invalidate In-Memory Question Cache
+app.post('/api/questions/cache/clear', async (c) => {
+  memoryCache.clear();
+  return c.json({ cleared: true });
 });
 
 // -------------------------------------------------------------

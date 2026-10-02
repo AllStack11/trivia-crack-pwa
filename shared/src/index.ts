@@ -196,6 +196,25 @@ export interface QuestionPackMeta {
   createdAt: number;
 }
 
+export interface ExpandPackRequest {
+  countPerCategory?: number;
+  categories?: Category[];
+  forceRefresh?: boolean;
+}
+
+export interface ExpandPackResponse {
+  packId: string;
+  added: number;
+  totalInPack: number;
+  byCategory: Record<Category, number>;
+  providersUsed: string[];
+}
+
+export interface FetchQuestionsResponse {
+  questions: QuestionData[];
+  provider: string;
+  cached?: boolean;
+}
 // Request / Response payloads
 export interface AuthCredentials {
   email?: string;

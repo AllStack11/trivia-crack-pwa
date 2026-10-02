@@ -1,9 +1,9 @@
 # Trivia Clash (Trivia Crack Clone PWA)
 
-A mobile-first Progressive Web App (PWA) clone of Trivia Crack built for friends to play turn-based duels, with 100% free deployment on Cloudflare (Cloudflare Pages + Cloudflare Workers + D1 SQLite + Server-Sent Events).
+A mobile-first Progressive Web App (PWA) clone of Trivia Crack built for friends to play turn-based duels, with 100% free deployment on Cloudflare (Cloudflare Workers + Workers Static Assets + D1 SQLite + Server-Sent Events).
 
 ## Live Production Deployment (Cloudflare)
-- **Frontend PWA (Cloudflare Pages)**: [https://triviaclash.pages.dev](https://triviaclash.pages.dev)
+- **Frontend PWA (Cloudflare Workers)**: [https://trivia-clash-client.saadmankabir95.workers.dev](https://trivia-clash-client.saadmankabir95.workers.dev)
 - **Backend API (Cloudflare Workers)**: [https://trivia-clash-server.saadmankabir95.workers.dev](https://trivia-clash-server.saadmankabir95.workers.dev)
 - **Edge Database (Cloudflare D1)**: `triviaclash-db` (`86030aff-f7e5-4a3d-bdb9-ca2f08a612a3`)
 
@@ -24,8 +24,14 @@ A mobile-first Progressive Web App (PWA) clone of Trivia Crack built for friends
     - **Steal**: Wager one of your own crowns to challenge an opponent's crown!
 - **180+ Pre-Bundled Curated Question Bank**:
   - 30 questions per category with rich visual/image questions (flags, landmarks, paintings, historical figures).
-- **OpenTDB Integration**:
-  - Live dynamic question fetching with fast HTML entity decoding and graceful offline fallback.
+- **Multi-Tier Question Caching & Cascading Fallback**:
+  - Fast in-memory question pools (`MemoryQuestionCache`) with 2-hour configurable TTL, LRU capacity pruning, and rotation tracking (`servedHistory`) to prevent duplicate questions on consecutive queries.
+  - Persistent database storage (`cached_questions` table in SQLite/Cloudflare D1) ordered by lowest served count.
+  - Dynamic fetching across **The Trivia API (v2)**, **Open Trivia Database (OpenTDB)**, **The Trivia API (v1)**, and **Will Fry Trivia API** with automatic refill batches.
+  - Multi-tier cascading fallback: checks memory cache first $\rightarrow$ SQLite/D1 second $\rightarrow$ external APIs third $\rightarrow$ curated pre-bundled pool on complete network/rate-limit failure.
+  - Live pack expansion (`POST /api/packs/:packId/expand`) and live question fetching (`GET /api/questions/fetch`) with `Cache-Control` and `X-Cache-Status` headers.
+  - Cache monitoring and management endpoints (`GET /api/questions/cache/stats`, `POST /api/questions/cache/clear`).
+  - Pack Studio UI with Fast/Fresh toggle and parallelized 30-question deck autofill.
 - **Custom Question Pack Creator**:
   - In-app pack manager supporting custom image URLs with live thumbnail preview.
   - JSON Import / Export matching standard format.
@@ -41,7 +47,7 @@ A mobile-first Progressive Web App (PWA) clone of Trivia Crack built for friends
   - **Local Development**: Runs natively on Bun (`bun run server/src/bunServer.ts`) on port 3001 with built-in SQLite (`bun:sqlite`).
   - **Production Edge**: Compiles directly to Cloudflare Workers with native Cloudflare D1 serverless SQLite binding (`env.DB`).
   - **Realtime Sync**: Server-Sent Events (`/api/games/:gameId/events`) for instantaneous multiplayer push.
-- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS + PWA Service Worker (deployable to Cloudflare Pages).
+- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS + PWA Service Worker (deployed to Cloudflare Workers Static Assets).
 
 ---
 
@@ -84,11 +90,8 @@ npx wrangler d1 migrations apply triviaclash-db --remote
 cd server && npx wrangler deploy
 ```
 
-### 2. Frontend: Cloudflare Pages
+### 2. Frontend: Cloudflare Workers (Static Assets)
 ```bash
-# Build production client bundle
-cd client && bun run build
-
-# Deploy to Cloudflare Pages
-npx wrangler pages deploy client/dist --project-name=triviaclash
+# Build production bundle and deploy Worker
+cd client && bun run deploy
 ```

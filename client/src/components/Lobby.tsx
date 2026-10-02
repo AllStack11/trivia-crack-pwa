@@ -14,12 +14,15 @@ import {
   Zap,
   Play,
   Check,
-  Plus
+  Plus,
+  Globe,
+  Loader2
 } from 'lucide-react';
 import type {
   AccountSummary,
   AuthResponse,
   DirectoryPlayer,
+  ExpandPackResponse,
   GameListResponse,
   InvitationSummary,
   PlayerSummary,
@@ -91,6 +94,35 @@ export default function Lobby({
   const [selectedPackIds, setSelectedPackIds] = useState<string[]>(['default']);
   const [players, setPlayers] = useState<Player[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [expandingPackId, setExpandingPackId] = useState<string | null>(null);
+
+  const handleExpandPack = async (packId: string, packTitle: string) => {
+    setExpandingPackId(packId);
+    playButtonPop();
+    triggerHaptic('medium');
+    try {
+      const res = await fetch(apiUrl(`/api/packs/${packId}/expand`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ countPerCategory: 5 })
+      });
+      if (res.ok) {
+        const data = (await res.json()) as ExpandPackResponse;
+        showToast(`Added ${data.added} questions to "${packTitle}"! (Total: ${data.totalInPack})`, 'success');
+        triggerHaptic('success');
+        const packsRes = await fetch(apiUrl('/api/packs'));
+        if (packsRes.ok) {
+          setPacks((await packsRes.json()) as QuestionPackMeta[]);
+        }
+      } else {
+        showToast('Could not expand pack', 'error');
+      }
+    } catch {
+      showToast('Network error expanding pack', 'error');
+    } finally {
+      setExpandingPackId(null);
+    }
+  };
   const [matches, setMatches] = useState<Match[]>([]);
   const [directory, setDirectory] = useState<DirectoryPlayer[]>([]);
   const [directoryLoading, setDirectoryLoading] = useState(false);
@@ -758,18 +790,45 @@ export default function Lobby({
                       Selected packs are used when creating new matches.
                     </p>
                   </div>
+                  {selectedPackIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetPackId = selectedPackIds[0] || 'default';
+                        const targetPack = packs.find((p) => p.id === targetPackId);
+                        void handleExpandPack(targetPackId, targetPack?.title || 'Selected Pack');
+                      }}
+                      disabled={expandingPackId !== null}
+                      title="Fetch 30 new questions from free trivia APIs"
+                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white text-xs font-bold shadow flex items-center gap-1.5 active:scale-95 disabled:opacity-50 transition-all flex-shrink-0"
+                    >
+                      {expandingPackId ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Globe className="w-3.5 h-3.5" />
+                      )}
+                      <span>+30 Qs</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {packs.map((pack) => {
                     const isSelected = selectedPackIds.includes(pack.id);
                     return (
-                      <button
+                      <div
                         key={pack.id}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         onClick={() => togglePack(pack.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            togglePack(pack.id);
+                          }
+                        }}
                         className={`
-                          p-3.5 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all
+                          p-3.5 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer
                           ${
                             isSelected
                               ? 'bg-indigo-950/80 border-indigo-400 text-white shadow-lg shadow-indigo-950/40 ring-1 ring-indigo-400/40'
@@ -783,16 +842,34 @@ export default function Lobby({
                             {pack.questionCount} Questions
                           </p>
                         </div>
-                        <div
-                          className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
-                            isSelected
-                              ? 'bg-indigo-500 text-white'
-                              : 'bg-slate-800 border border-slate-700 text-transparent'
-                          }`}
-                        >
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleExpandPack(pack.id, pack.title);
+                            }}
+                            disabled={expandingPackId === pack.id}
+                            title="Fetch 30 fresh questions from free trivia APIs"
+                            className="p-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-emerald-400 border border-slate-700/60 transition-all active:scale-95 disabled:opacity-50"
+                          >
+                            {expandingPackId === pack.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                            ) : (
+                              <Globe className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+                              isSelected
+                                ? 'bg-indigo-500 text-white'
+                                : 'bg-slate-800 border border-slate-700 text-transparent'
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          </div>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>

@@ -112,3 +112,19 @@ CREATE INDEX IF NOT EXISTS idx_invitations_recipient_status ON game_invitations(
 CREATE INDEX IF NOT EXISTS idx_invitations_pair_status ON game_invitations(sender_id, recipient_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_invites_pending_pair ON game_invitations(sender_id, recipient_id) WHERE status = 'PENDING';
 CREATE INDEX IF NOT EXISTS idx_games_players_updated ON games(player1_id, player2_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS cached_questions (
+  id TEXT PRIMARY KEY,
+  category TEXT NOT NULL,
+  question TEXT NOT NULL UNIQUE,
+  image_url TEXT,
+  correct_answer TEXT NOT NULL,
+  incorrect_answers_json TEXT NOT NULL,
+  difficulty TEXT NOT NULL DEFAULT 'medium',
+  provider TEXT NOT NULL,
+  cached_at INTEGER NOT NULL,
+  served_count INTEGER NOT NULL DEFAULT 0,
+  last_served_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_cached_questions_cat ON cached_questions(category, served_count, last_served_at);

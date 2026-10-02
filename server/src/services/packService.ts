@@ -1,7 +1,10 @@
 import { CATEGORIES, type Category, type QuestionData, type QuestionPackExport, type QuestionPackMeta } from '../../../shared/src/index';
 import type { AppDatabase } from '../db/database';
 import { CURATED_QUESTIONS } from './curatedQuestions';
-import { fetchOpenTdbQuestions } from './openTdbService';
+import {
+  expandPackQuestions,
+  fetchTriviaQuestionsWithFallback
+} from './triviaApiService';
 
 interface DbPackRow {
   id: string;
@@ -311,10 +314,10 @@ export async function getRandomQuestion(
     };
   }
 
-  // If all local questions in this category have been exhausted, fetch dynamically from OpenTDB
-  const fetched = await fetchOpenTdbQuestions(category, 1, db);
-  if (fetched.length > 0) {
-    return fetched[0];
+  // If all local questions in this category have been exhausted, fetch dynamically with cache-first lookup
+  const liveResult = await fetchLiveQuestions(category, 1, 'default', db);
+  if (liveResult.questions.length > 0) {
+    return liveResult.questions[0];
   }
 
   // Ultimate fallback to curated
@@ -323,4 +326,37 @@ export async function getRandomQuestion(
     ...fallback,
     packId: 'default'
   };
+}
+
+/**
+ * Expand a question pack with questions fetched from free trivia APIs with graceful fallback
+ */
+export async function expandPack(
+  db: AppDatabase,
+  packId: string,
+  countPerCategory: number = 5,
+  categories?: Category[],
+  forceRefresh?: boolean
+) {
+  await ensureDefaultPackSeeded(db);
+  return expandPackQuestions(db, packId, countPerCategory, categories, forceRefresh);
+}
+
+/**
+ * Fetch live questions on demand with fallback across providers and multi-tier cache
+ */
+export async function fetchLiveQuestions(
+  category: Category,
+  amount: number = 5,
+  packId: string = 'default',
+  db?: AppDatabase,
+  forceRefresh?: boolean
+) {
+  return fetchTriviaQuestionsWithFallback({
+    category,
+    amount,
+    packId,
+    db,
+    forceRefresh
+  });
 }
