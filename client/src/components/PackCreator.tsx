@@ -238,7 +238,7 @@ export default function PackCreator({ onBack }: PackCreatorProps) {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-2xl flex flex-col gap-4">
+    <div className="w-full max-w-md mx-auto bg-slate-900/85 backdrop-blur-2xl border border-slate-700/80 rounded-3xl p-5 shadow-2xl flex flex-col gap-4">
       {/* Top Header */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
         <button

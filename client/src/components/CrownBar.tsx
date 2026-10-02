@@ -1,5 +1,8 @@
+import { motion } from 'motion/react';
 import type { Category, GameStateSync, PlayerState } from '../../../shared/src/index';
 import { CATEGORIES } from '../../../shared/src/index';
+import CategoryCharacter from './characters/CategoryCharacter';
+import Card from './ui/Card';
 
 interface CrownBarProps {
   state: GameStateSync;
@@ -25,174 +28,188 @@ export default function CrownBar({ state, myPlayerId }: CrownBarProps) {
   const activePlayer = isP1Turn ? p1 : p2;
   const currentGauge = activePlayer?.crownGauge || 0;
 
-  const renderCrownBadge = (player: PlayerState, category: Category) => {
-    const isUnlocked = player.crowns.includes(category);
-    const info = CATEGORIES[category];
-
-    let icon = '🎨';
-    if (category === 'SCIENCE') icon = '🔬';
-    if (category === 'SPORTS') icon = '🏆';
-    if (category === 'ENTERTAINMENT') icon = '🎬';
-    if (category === 'GEOGRAPHY') icon = '🌍';
-    if (category === 'HISTORY') icon = '⏳';
-
+  const renderPlayerCrowns = (player: PlayerState) => {
     return (
-      <div
-        key={category}
-        title={`${info.characterName} (${info.name}) - ${isUnlocked ? 'Unlocked' : 'Locked'}`}
-        className={`w-5 h-5 sm:w-7 sm:h-7 rounded-md sm:rounded-lg flex items-center justify-center text-[10px] sm:text-xs transition-all duration-300 relative shrink-0 ${
-          isUnlocked
-            ? 'shadow-sm border border-yellow-300 transform scale-105'
-            : 'bg-slate-800/90 border border-slate-700/60 opacity-30 grayscale'
-        }`}
-        style={{
-          backgroundColor: isUnlocked ? info.color : undefined
-        }}
-      >
-        <span className="text-[10px] sm:text-xs leading-none">{icon}</span>
-        {isUnlocked && (
-          <span className="absolute -top-1 -right-1 text-[7px] leading-none bg-yellow-400 text-slate-950 font-black rounded-full px-0.5 shadow">
-            👑
-          </span>
-        )}
+      <div className="flex items-center gap-1 sm:gap-1.5">
+        {CROWN_CATEGORIES.map((category) => {
+          const isUnlocked = player.crowns.includes(category);
+          const catInfo = CATEGORIES[category];
+
+          return (
+            <div
+              key={category}
+              title={`${catInfo.characterName} (${catInfo.name}): ${isUnlocked ? 'Crown Unlocked! 👑' : 'Locked'}`}
+              className="relative"
+            >
+              {isUnlocked ? (
+                <motion.div
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: 1 }}
+                  className="relative"
+                >
+                  <CategoryCharacter
+                    category={category}
+                    size="xs"
+                    mood="celebrating"
+                    showCrown
+                    className="drop-shadow-sm"
+                  />
+                </motion.div>
+              ) : (
+                <div
+                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] bg-slate-900/90 border border-slate-700/60 opacity-30 grayscale transition-all"
+                  style={{ borderColor: `${catInfo.color}40` }}
+                >
+                  <span>{catInfo.characterName.charAt(0)}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   };
 
   return (
-    <div className="w-full max-w-md mx-auto bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl p-2 sm:p-3 shadow-xl flex flex-col gap-1.5 sm:gap-2">
-      {/* Top Players Row - grid with 3 columns fitting 100% of mobile screens */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5 sm:gap-2 w-full">
-        {/* Player 1 */}
+    <Card
+      variant="glass"
+      className="w-full max-w-md mx-auto p-2.5 sm:p-3.5 flex flex-col gap-2 relative z-20 shadow-2xl"
+    >
+      {/* Players Row */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
+        {/* Player 1 Card */}
         <div
-          className={`min-w-0 p-1.5 sm:p-2 rounded-xl sm:rounded-2xl border transition-all ${
+          className={`min-w-0 p-2 sm:p-2.5 rounded-2xl border transition-all duration-300 relative ${
             isP1Turn
-              ? 'bg-indigo-950/50 border-indigo-500 shadow-md shadow-indigo-950/40'
-              : 'bg-slate-800/30 border-slate-700/30 opacity-75'
+              ? 'bg-indigo-950/70 border-indigo-400 shadow-lg shadow-indigo-500/20'
+              : 'bg-slate-950/40 border-slate-800/80 opacity-70'
           }`}
         >
-          <div className="flex items-center gap-1.5 mb-1 min-w-0">
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center font-bold text-white text-[10px] sm:text-xs shadow shrink-0">
+          {isP1Turn && (
+            <motion.span
+              layoutId="turnIndicator"
+              className="absolute -top-1.5 -left-1 px-1.5 py-0.2 rounded-full bg-emerald-500 text-slate-950 text-[9px] font-black uppercase tracking-wider shadow"
+            >
+              Turn
+            </motion.span>
+          )}
+          <div className="flex items-center gap-2 mb-1.5 min-w-0">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-violet-600 flex items-center justify-center font-black text-white text-xs shadow shrink-0">
               {p1.username.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1 min-w-0">
-                <span className="font-bold text-[11px] sm:text-xs text-white truncate block">
-                  {p1.username}
-                </span>
+              <div className="flex items-center gap-1">
+                <span className="font-extrabold text-xs text-white truncate">{p1.username}</span>
                 {myPlayerId === p1.id && (
-                  <span className="text-[8px] bg-indigo-500/40 text-indigo-300 px-1 rounded font-bold shrink-0">
-                    YOU
-                  </span>
+                  <span className="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1 rounded">You</span>
                 )}
               </div>
-              <div className="text-[9px] sm:text-[10px] text-slate-400 flex items-center gap-1">
-                <span>⭐{p1.score}</span>
-                {isP1Turn && (
-                  <span className="text-yellow-400 font-extrabold text-[8px] sm:text-[9px] animate-pulse shrink-0">
-                    ● TURN
-                  </span>
-                )}
+              <div className="text-[10px] text-amber-300 font-bold flex items-center gap-0.5">
+                <span>👑</span>
+                <span>{p1.crowns.length}/6</span>
               </div>
             </div>
           </div>
-          {/* P1 Crowns */}
-          <div className="flex items-center justify-start gap-1 overflow-x-hidden">
-            {CROWN_CATEGORIES.map((cat) => renderCrownBadge(p1, cat))}
+          {/* Crowns Badges */}
+          {renderPlayerCrowns(p1)}
+        </div>
+
+        {/* Center VS & Turn Banner */}
+        <div className="flex flex-col items-center justify-center px-1">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-b from-amber-400 to-yellow-600 text-slate-950 flex items-center justify-center text-xs font-black shadow-lg shadow-amber-500/20 border border-yellow-300">
+            VS
           </div>
         </div>
 
-        {/* Center Round Badge */}
-        <div className="flex flex-col items-center justify-center px-1 shrink-0">
-          <div className="text-[8px] sm:text-[9px] uppercase font-bold text-slate-500">Round</div>
-          <div className="text-[11px] sm:text-xs font-black text-slate-300">
-            {state.roundNumber}/{state.maxRounds}
-          </div>
-        </div>
-
-        {/* Player 2 */}
-        <div
-          className={`min-w-0 p-1.5 sm:p-2 rounded-xl sm:rounded-2xl border transition-all ${
-            isP2Turn
-              ? 'bg-indigo-950/50 border-indigo-500 shadow-md shadow-indigo-950/40'
-              : 'bg-slate-800/30 border-slate-700/30 opacity-75'
-          }`}
-        >
-          {p2 ? (
-            <>
-              <div className="flex items-center gap-1.5 mb-1 min-w-0 justify-end">
-                <div className="min-w-0 flex-1 text-right">
-                  <div className="flex items-center gap-1 justify-end min-w-0">
-                    {myPlayerId === p2.id && (
-                      <span className="text-[8px] bg-indigo-500/40 text-indigo-300 px-1 rounded font-bold shrink-0">
-                        YOU
-                      </span>
-                    )}
-                    <span className="font-bold text-[11px] sm:text-xs text-white truncate block">
-                      {p2.username}
-                    </span>
-                  </div>
-                  <div className="text-[9px] sm:text-[10px] text-slate-400 flex items-center gap-1 justify-end">
-                    {isP2Turn && (
-                      <span className="text-yellow-400 font-extrabold text-[8px] sm:text-[9px] animate-pulse shrink-0">
-                        TURN ●
-                      </span>
-                    )}
-                    <span>⭐{p2.score}</span>
-                  </div>
+        {/* Player 2 Card */}
+        {p2 ? (
+          <div
+            className={`min-w-0 p-2 sm:p-2.5 rounded-2xl border transition-all duration-300 relative ${
+              isP2Turn
+                ? 'bg-rose-950/70 border-rose-400 shadow-lg shadow-rose-500/20'
+                : 'bg-slate-950/40 border-slate-800/80 opacity-70'
+            }`}
+          >
+            {isP2Turn && (
+              <motion.span
+                layoutId="turnIndicator"
+                className="absolute -top-1.5 -right-1 px-1.5 py-0.2 rounded-full bg-emerald-500 text-slate-950 text-[9px] font-black uppercase tracking-wider shadow"
+              >
+                Turn
+              </motion.span>
+            )}
+            <div className="flex items-center gap-2 mb-1.5 min-w-0">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-pink-600 flex items-center justify-center font-black text-white text-xs shadow shrink-0">
+                {p2.username.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1">
+                  <span className="font-extrabold text-xs text-white truncate">{p2.username}</span>
+                  {myPlayerId === p2.id && (
+                    <span className="text-[9px] font-bold text-rose-300 bg-rose-500/20 px-1 rounded">You</span>
+                  )}
                 </div>
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-tr from-amber-600 to-orange-500 flex items-center justify-center font-bold text-white text-[10px] sm:text-xs shadow shrink-0">
-                  {p2.username.charAt(0).toUpperCase()}
+                <div className="text-[10px] text-amber-300 font-bold flex items-center gap-0.5">
+                  <span>👑</span>
+                  <span>{p2.crowns.length}/6</span>
                 </div>
               </div>
-              {/* P2 Crowns */}
-              <div className="flex items-center justify-end gap-1 overflow-x-hidden">
-                {CROWN_CATEGORIES.map((cat) => renderCrownBadge(p2, cat))}
-              </div>
-            </>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center py-1 text-center">
-              <span className="text-[10px] sm:text-xs text-yellow-400 font-bold animate-pulse">
-                Awaiting P2...
-              </span>
-              <span className="text-[8px] text-slate-400">Share code</span>
             </div>
-          )}
-        </div>
+            {/* Crowns Badges */}
+            {renderPlayerCrowns(p2)}
+          </div>
+        ) : (
+          <div className="p-2.5 rounded-2xl border border-dashed border-slate-700/60 bg-slate-950/20 text-center flex flex-col items-center justify-center">
+            <span className="text-[10px] text-slate-400 font-medium">Waiting for opponent…</span>
+          </div>
+        )}
       </div>
 
-      {/* 3-Point Crown Gauge */}
-      <div className="bg-slate-950/60 rounded-xl px-2.5 py-1.5 border border-slate-800/80 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <span className="text-xs">👑</span>
-          <span className="text-[10px] sm:text-[11px] font-bold text-slate-300">Gauge</span>
+      {/* Crown Gauge Meter (Liquid Neon Meter) */}
+      <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-amber-400 font-black text-[11px] flex items-center gap-1">
+            <span>👑</span>
+            <span>CROWN GAUGE:</span>
+          </span>
+          <span className="text-[10px] font-bold text-slate-300">{currentGauge}/3</span>
         </div>
 
-        {/* 3 Slot Indicator */}
-        <div className="flex items-center gap-1 sm:gap-1.5">
-          {[1, 2, 3].map((slot) => {
-            const isFilled = currentGauge >= slot;
+        {/* 3-Bar Liquid Progress */}
+        <div className="flex items-center gap-1.5 flex-1 max-w-[140px]">
+          {[1, 2, 3].map((step) => {
+            const isFilled = currentGauge >= step;
             return (
               <div
-                key={slot}
-                className={`w-6 sm:w-7 h-2 sm:h-2.5 rounded-full transition-all duration-300 ${
-                  isFilled
-                    ? 'bg-gradient-to-r from-amber-400 to-yellow-300 shadow-sm shadow-yellow-500/40 ring-1 ring-yellow-200'
-                    : 'bg-slate-800 border border-slate-700'
-                }`}
-              />
+                key={step}
+                className="h-2.5 flex-1 rounded-full bg-slate-800/90 overflow-hidden relative border border-slate-700/50"
+              >
+                {isFilled && (
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: '100%' }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                    className="h-full bg-gradient-to-r from-amber-400 to-yellow-300 shadow-sm shadow-amber-400"
+                  />
+                )}
+              </div>
             );
           })}
         </div>
 
-        <div className="text-[9px] sm:text-[10px] font-bold text-slate-400">
+        {/* Status Callout */}
+        <div className="text-[10px] font-extrabold text-right shrink-0">
           {currentGauge >= 3 ? (
-            <span className="text-yellow-400 font-extrabold animate-pulse">CROWN READY!</span>
+            <span className="text-amber-300 animate-pulse flex items-center gap-1">
+              <span>⚡</span> CROWN READY!
+            </span>
           ) : (
-            <span>{currentGauge}/3</span>
+            <span className="text-slate-400">
+              {3 - currentGauge} to Crown
+            </span>
           )}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

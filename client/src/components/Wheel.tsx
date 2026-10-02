@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { WheelSlice } from '../../../shared/src/index';
+import { motion, AnimatePresence } from 'motion/react';
+import type { Category, WheelSlice } from '../../../shared/src/index';
 import { playButtonPop, playWheelTick } from '../utils/audio';
+import CategoryCharacter from './characters/CategoryCharacter';
+import { CHARACTER_PROFILES } from './characters/characterData';
+import Button from './ui/Button';
 
 interface WheelProps {
   canSpin: boolean;
@@ -41,8 +45,9 @@ export default function Wheel({
   const animationFrameRef = useRef<number | null>(null);
   const lastPegCrossedRef = useRef<number>(-1);
   const [flapperDeflection, setFlapperDeflection] = useState<number>(0);
+  const [landedSlice, setLandedSlice] = useState<WheelSlice | null>(null);
 
-  // Draw the entire wheel on canvas proportionally to canvas size
+  // Draw wheel on canvas
   const drawWheel = useCallback((rotationAngleRad: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -54,44 +59,54 @@ export default function Wheel({
     const height = canvas.height / dpr;
     const centerX = width / 2;
     const centerY = height / 2;
-    const radius = Math.min(centerX, centerY) - 10;
+    const radius = Math.min(centerX, centerY) - 12;
     const sliceCount = SLICE_CONFIGS.length;
     const sliceAngle = (2 * Math.PI) / sliceCount;
 
     ctx.clearRect(0, 0, width, height);
 
-    // Outer shadow / rim
+    // 1. Outer Deep Ambient Shadow
     ctx.save();
     ctx.beginPath();
-    ctx.arc(centerX, centerY, radius + 6, 0, 2 * Math.PI);
-    ctx.fillStyle = '#1E1B4B';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-    ctx.shadowBlur = 16;
-    ctx.shadowOffsetY = 4;
+    ctx.arc(centerX, centerY, radius + 10, 0, 2 * Math.PI);
+    ctx.fillStyle = '#060A14';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+    ctx.shadowBlur = 24;
+    ctx.shadowOffsetY = 6;
     ctx.fill();
     ctx.restore();
 
-    // Outer Golden Ring
+    // 2. Beveled Metallic Golden Ring with Neon Trim
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(centerX, centerY, radius + 5, 0, 2 * Math.PI);
+    ctx.arc(centerX, centerY, radius + 6, 0, 2 * Math.PI);
     const rimGrad = ctx.createLinearGradient(0, 0, width, height);
-    rimGrad.addColorStop(0, '#FDE047');
-    rimGrad.addColorStop(0.5, '#CA8A04');
-    rimGrad.addColorStop(1, '#854D0E');
+    rimGrad.addColorStop(0, '#FEF08A');
+    rimGrad.addColorStop(0.3, '#EAB308');
+    rimGrad.addColorStop(0.7, '#CA8A04');
+    rimGrad.addColorStop(1, '#78350F');
     ctx.strokeStyle = rimGrad;
-    ctx.lineWidth = Math.max(5, Math.round(radius * 0.05));
+    ctx.lineWidth = Math.max(7, Math.round(radius * 0.06));
     ctx.stroke();
 
-    // Rotate context for wedges
+    // Inner subtle glow border
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius + 1, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // 3. Rotate context for Wedges
     ctx.save();
     ctx.translate(centerX, centerY);
     ctx.rotate(rotationAngleRad);
 
-    // Font metrics based on radius - mathematically centered in clear radial band
-    const iconSize = Math.max(13, Math.round(radius * 0.115));
-    const labelSize = Math.max(7.5, Math.round(radius * 0.056));
-    const iconPos = radius * 0.83;
-    const labelCenterPos = radius * 0.48;
+    const iconSize = Math.max(14, Math.round(radius * 0.12));
+    const labelSize = Math.max(8, Math.round(radius * 0.058));
+    const iconPos = radius * 0.82;
+    const labelCenterPos = radius * 0.46;
+
     for (let i = 0; i < sliceCount; i++) {
       const config = SLICE_CONFIGS[i];
       const startAngle = i * sliceAngle;
@@ -103,15 +118,15 @@ export default function Wheel({
       ctx.closePath();
 
       // Wedge radial gradient
-      const wedgeGrad = ctx.createRadialGradient(0, 0, radius * 0.2, 0, 0, radius);
+      const wedgeGrad = ctx.createRadialGradient(0, 0, radius * 0.15, 0, 0, radius);
       wedgeGrad.addColorStop(0, config.color);
       wedgeGrad.addColorStop(1, config.accentColor);
       ctx.fillStyle = wedgeGrad;
       ctx.fill();
 
-      // Wedge divider line
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 2;
+      // Crisp slice divider with specular shine
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 2.5;
       ctx.stroke();
 
       // Slice Content (Text & Icon)
@@ -120,96 +135,109 @@ export default function Wheel({
       ctx.rotate(midAngle);
       ctx.textBaseline = 'middle';
 
-      // Draw Icon near the outer rim
+      // Draw Icon near the rim
       ctx.textAlign = 'center';
       ctx.font = `${iconSize}px sans-serif`;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+      ctx.shadowBlur = 4;
       ctx.fillText(config.icon, iconPos, 0);
 
-      // Draw Label centered in the clear band between center hub and icon (never overlaps!)
+      // Draw Label centered in clear wedge band
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = `bold ${labelSize}px system-ui, -apple-system, sans-serif`;
+      ctx.font = `900 ${labelSize}px system-ui, -apple-system, BlinkMacSystemFont, sans-serif`;
       ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-      ctx.shadowBlur = 3;
+      ctx.shadowBlur = 4;
       ctx.fillText(config.label, labelCenterPos, 0);
 
       ctx.restore();
     }
 
-    // Outer Rim Pegs / Studs (14 studs around rim)
+    // 4. Outer Rim Jewels / LED Pegs (14 pegs around the circumference)
     const pegCount = 14;
     for (let p = 0; p < pegCount; p++) {
       const pegAngle = (p * 2 * Math.PI) / pegCount;
       const px = Math.cos(pegAngle) * (radius + 2);
       const py = Math.sin(pegAngle) * (radius + 2);
 
+      // Jewel base
       ctx.beginPath();
-      ctx.arc(px, py, Math.max(2.5, radius * 0.025), 0, 2 * Math.PI);
-      ctx.fillStyle = '#FEF08A';
+      ctx.arc(px, py, Math.max(3, radius * 0.028), 0, 2 * Math.PI);
+      ctx.fillStyle = p % 2 === 0 ? '#FDE047' : '#FFFFFF';
       ctx.shadowColor = '#000000';
-      ctx.shadowBlur = 2;
+      ctx.shadowBlur = 3;
       ctx.fill();
 
+      // Jewel specular glint
       ctx.beginPath();
-      ctx.arc(px, py, Math.max(1, radius * 0.012), 0, 2 * Math.PI);
+      ctx.arc(px, py, Math.max(1.2, radius * 0.012), 0, 2 * Math.PI);
       ctx.fillStyle = '#FFFFFF';
       ctx.fill();
     }
 
     ctx.restore(); // Restore translate & rotate
 
-    // Center Hub Metrics (compact to maximize radial space for slice content)
-    const hubOuterRadius = Math.round(radius * 0.22);
-    const hubInnerRadius = Math.round(radius * 0.18);
-    const spinFontSize = Math.max(9.5, Math.round(radius * 0.09));
+    // 5. Center Hub
+    const hubOuterRadius = Math.round(radius * 0.24);
+    const hubInnerRadius = Math.round(radius * 0.19);
+    const spinFontSize = Math.max(10, Math.round(radius * 0.095));
 
-    // Center Hub Rim
+    // Outer Hub Gold Ring
+    ctx.save();
     ctx.beginPath();
     ctx.arc(centerX, centerY, hubOuterRadius, 0, 2 * Math.PI);
     ctx.fillStyle = '#0F172A';
     ctx.fill();
     ctx.strokeStyle = '#FDE047';
-    ctx.lineWidth = Math.max(2, Math.round(radius * 0.02));
+    ctx.lineWidth = Math.max(2.5, Math.round(radius * 0.025));
     ctx.stroke();
-    // Center Hub Button
+
+    // Center Hub Button Gradient
     const hubGrad = ctx.createLinearGradient(
       centerX - hubInnerRadius,
       centerY - hubInnerRadius,
       centerX + hubInnerRadius,
       centerY + hubInnerRadius
     );
-    hubGrad.addColorStop(0, '#4F46E5');
-    hubGrad.addColorStop(1, '#312E81');
+    if (canSpin && !isSpinning) {
+      hubGrad.addColorStop(0, '#F59E0B');
+      hubGrad.addColorStop(0.5, '#D97706');
+      hubGrad.addColorStop(1, '#92400E');
+    } else {
+      hubGrad.addColorStop(0, '#334155');
+      hubGrad.addColorStop(1, '#0F172A');
+    }
     ctx.beginPath();
     ctx.arc(centerX, centerY, hubInnerRadius, 0, 2 * Math.PI);
     ctx.fillStyle = hubGrad;
+    ctx.shadowColor = canSpin && !isSpinning ? 'rgba(245, 158, 11, 0.6)' : 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = canSpin && !isSpinning ? 12 : 4;
     ctx.fill();
 
-    // "SPIN" text in center
+    // "SPIN" text
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = canSpin && !isSpinning ? '#FFFFFF' : '#94A3B8';
-    ctx.font = `bold ${spinFontSize}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `900 ${spinFontSize}px system-ui, -apple-system, sans-serif`;
     ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-    ctx.shadowBlur = 3;
+    ctx.shadowBlur = 4;
     ctx.fillText('SPIN', centerX, centerY);
+    ctx.restore();
   }, [canSpin, isSpinning]);
 
-  // Handle high DPI retina display sizing dynamically
+  // Handle responsive canvas resizing
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
-    const size = Math.round(Math.min(rect.width || 260, rect.height || 260));
+    const size = Math.round(Math.min(rect.width || 270, rect.height || 270));
 
     if (size > 0) {
       canvas.width = size * dpr;
       canvas.height = size * dpr;
 
       const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.scale(dpr, dpr);
-      }
+      if (ctx) ctx.scale(dpr, dpr);
       drawWheel(currentRotationRef.current);
     }
   }, [drawWheel]);
@@ -220,9 +248,10 @@ export default function Wheel({
     return () => window.removeEventListener('resize', resizeCanvas);
   }, [resizeCanvas]);
 
-  // Run spin physics animation when targetDegrees is provided
+  // Spin Animation Engine
   useEffect(() => {
     if (!isSpinning || targetDegrees === undefined) return;
+    setLandedSlice(null);
 
     const startAngle = currentRotationRef.current;
     const targetRad = (targetDegrees * Math.PI) / 180;
@@ -234,19 +263,19 @@ export default function Wheel({
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
 
-      // Quintic ease out for realistic decelerating spin
+      // Decelerating quintic ease-out curve
       const easeOut = 1 - Math.pow(1 - progress, 4);
       const currentAngle = startAngle + deltaAngle * easeOut;
       currentRotationRef.current = currentAngle;
 
-      // Track peg crossing at top pointer
+      // Track flapper peg hits
       const currentDeg = ((currentAngle * 180) / Math.PI) % 360;
       const pegIndex = Math.floor((currentDeg * 14) / 360);
 
       if (pegIndex !== lastPegCrossedRef.current) {
         lastPegCrossedRef.current = pegIndex;
         playWheelTick((14 - (pegIndex % 14)) * 0.1);
-        setFlapperDeflection(-16);
+        setFlapperDeflection(-18);
         setTimeout(() => setFlapperDeflection(0), 40);
 
         if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
@@ -259,12 +288,13 @@ export default function Wheel({
       if (progress < 1) {
         animationFrameRef.current = requestAnimationFrame(animate);
       } else {
-        // Animation finished
+        // Spin finished
         const normalizedDeg = (360 - ((currentAngle * 180) / Math.PI) % 360) % 360;
         const sliceArc = 360 / SLICE_CONFIGS.length;
         const landedIndex = Math.floor(normalizedDeg / sliceArc) % SLICE_CONFIGS.length;
-        const landedSlice = SLICE_CONFIGS[landedIndex].slice;
-        onSpinComplete(landedSlice);
+        const resultSlice = SLICE_CONFIGS[landedIndex].slice;
+        setLandedSlice(resultSlice);
+        onSpinComplete(resultSlice);
       }
     };
 
@@ -283,53 +313,121 @@ export default function Wheel({
     onSpinStart();
   };
 
+  const landedProfile = landedSlice && landedSlice !== 'CROWN'
+    ? CHARACTER_PROFILES[landedSlice as Category]
+    : null;
+
   return (
-    <div className="relative flex flex-col items-center justify-center p-1 select-none touch-manipulation w-full">
-      {/* Top Deflector Flapper */}
+    <div className="relative flex flex-col items-center justify-center p-2 select-none touch-manipulation w-full">
+      {/* Top Golden Deflector Pointer */}
       <div
-        className="absolute top-0 z-20 flex flex-col items-center transition-transform duration-75 origin-top pointer-events-none"
+        className="absolute top-1 z-30 flex flex-col items-center transition-transform duration-75 origin-top pointer-events-none"
         style={{ transform: `rotate(${flapperDeflection}deg)` }}
       >
-        {/* Flapper mount pin */}
-        <div className="w-4 h-4 rounded-full bg-yellow-400 border-2 border-yellow-600 shadow-md flex items-center justify-center">
-          <div className="w-1.5 h-1.5 rounded-full bg-slate-900" />
+        <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-yellow-300 via-amber-400 to-yellow-500 border-2 border-yellow-200 shadow-lg flex items-center justify-center">
+          <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />
         </div>
-        {/* Flapper needle */}
-        <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[18px] border-t-red-600 drop-shadow-md -mt-1" />
+        <div className="w-0 h-0 border-l-[9px] border-l-transparent border-r-[9px] border-r-transparent border-t-[20px] border-t-red-600 drop-shadow-lg -mt-1" />
       </div>
 
-      {/* Main Wheel Canvas with responsive constraints */}
-      <div
-        className="relative cursor-pointer transition-transform active:scale-[0.98] w-[265px] h-[265px] xs:w-[285px] xs:h-[285px] sm:w-[325px] sm:h-[325px] max-w-[82vw] max-h-[48vh] flex items-center justify-center"
+      {/* Main Wheel Canvas with ambient neon halo */}
+      <motion.div
+        whileHover={canSpin && !isSpinning ? { scale: 1.02 } : undefined}
+        whileTap={canSpin && !isSpinning ? { scale: 0.98 } : undefined}
+        className="relative cursor-pointer w-[270px] h-[270px] xs:w-[295px] xs:h-[295px] sm:w-[335px] sm:h-[335px] max-w-[85vw] max-h-[50vh] flex items-center justify-center"
         onClick={handleCenterClick}
       >
+        {/* Pulsing golden aura when it's your turn to spin */}
+        {canSpin && !isSpinning && (
+          <motion.div
+            animate={{
+              scale: [1, 1.06, 1],
+              opacity: [0.35, 0.7, 0.35]
+            }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            className="absolute -inset-3 rounded-full blur-xl bg-amber-400/40 pointer-events-none"
+          />
+        )}
+
         <canvas
           ref={canvasRef}
-          className="w-full h-full drop-shadow-xl rounded-full"
+          className="w-full h-full drop-shadow-2xl rounded-full relative z-10"
         />
+      </motion.div>
 
-        {/* Contained pulse glow ring when canSpin */}
-        {canSpin && !isSpinning && (
-          <div className="absolute -inset-1 rounded-full border-2 border-yellow-400/60 shadow-[0_0_20px_rgba(250,204,21,0.35)] pointer-events-none animate-pulse" />
-        )}
-      </div>
-
-      {/* Helper caption / spin trigger button */}
-      <div className="mt-2 text-center">
+      {/* Action / Status Controls */}
+      <div className="mt-3 text-center w-full max-w-xs">
         {isSpinning ? (
-          <p className="text-xs font-semibold text-yellow-400 animate-pulse">Wheel is spinning...</p>
+          <div className="py-2.5 px-4 rounded-2xl bg-amber-500/10 border border-amber-400/30 flex items-center justify-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            <span className="text-xs font-black text-amber-300 tracking-wide uppercase">
+              Wheel Spinning…
+            </span>
+          </div>
         ) : canSpin ? (
-          <button
+          <Button
+            variant="primary"
+            size="lg"
+            glow
             onClick={handleCenterClick}
-            className="px-5 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold text-xs sm:text-sm rounded-full shadow-md transition-all transform active:scale-95 flex items-center gap-1.5"
+            className="w-full shadow-amber-500/30"
           >
-            <span>Tap Center or Here to Spin</span>
-            <span>🎲</span>
-          </button>
+            <span>🎲 SPIN THE WHEEL!</span>
+          </Button>
         ) : (
-          <p className="text-[11px] text-slate-400">Waiting for opponent's move...</p>
+          <div className="py-2 px-3 rounded-xl bg-slate-900/60 border border-slate-800 text-[11px] font-bold text-slate-400">
+            ⏳ Waiting for opponent's turn…
+          </div>
         )}
       </div>
+
+      {/* Character Landing Celebration Card */}
+      <AnimatePresence>
+        {landedSlice && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 10 }}
+            transition={{ type: 'spring', stiffness: 450, damping: 25 }}
+            className="mt-3 w-full max-w-sm p-3.5 rounded-2xl bg-slate-900/95 border border-white/15 backdrop-blur-xl shadow-2xl flex items-center gap-3 relative z-30"
+          >
+            {landedSlice === 'CROWN' ? (
+              <>
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-400 to-yellow-500 flex items-center justify-center text-2xl shadow-lg border border-yellow-200 shrink-0">
+                  👑
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-black text-amber-400 uppercase tracking-wider">Landed on Crown!</div>
+                  <div className="text-sm font-extrabold text-white">Crown Challenge Unlocked!</div>
+                  <p className="text-[10px] text-slate-300">Choose a character to duel or steal.</p>
+                </div>
+              </>
+            ) : landedProfile ? (
+              <>
+                <CategoryCharacter
+                  category={landedSlice}
+                  size="md"
+                  mood="celebrating"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-black text-white">{landedProfile.name}</span>
+                    <span
+                      className="text-[9px] font-bold px-1.5 py-0.2 rounded-full text-white"
+                      style={{ backgroundColor: landedProfile.color }}
+                    >
+                      {landedSlice}
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-bold text-amber-300 italic mt-0.5 truncate">
+                    "{landedProfile.quotes.greeting}"
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

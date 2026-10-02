@@ -13,6 +13,7 @@ import {
 } from '../src/services/packService';
 import { decodeHtmlEntities } from '../src/services/openTdbService';
 
+
 describe('Pack Service & OpenTDB Integration', () => {
   let db: AppDatabase;
 
@@ -116,5 +117,22 @@ describe('Pack Service & OpenTDB Integration', () => {
     // Exclude q1 and request next question
     const q2 = await getRandomQuestion(db, ['default'], 'SCIENCE', [q1.id]);
     expect(q2.id).not.toBe(q1.id);
+  });
+
+  test('import rejects questions with categories outside the game wheel', async () => {
+    await expect(importPack(db, {
+      title: 'Unsupported category pack',
+      questions: [{
+        category: 'UNSUPPORTED' as never,
+        question: 'A question with an unknown category?',
+        correctAnswer: 'Yes',
+        incorrectAnswers: ['No']
+      }]
+    })).rejects.toThrow('No valid questions found');
+    const persisted = await db.queryFirst<{ count: number }>(
+      'SELECT COUNT(*) as count FROM question_packs WHERE title = ?',
+      ['Unsupported category pack']
+    );
+    expect(persisted?.count ?? 0).toBe(0);
   });
 });

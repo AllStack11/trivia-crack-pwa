@@ -1,7 +1,12 @@
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import type { Category, GameStateSync } from '../../../shared/src/index';
 import { CATEGORIES } from '../../../shared/src/index';
 import { playButtonPop } from '../utils/audio';
+import CategoryCharacter from './characters/CategoryCharacter';
+import { CHARACTER_PROFILES } from './characters/characterData';
+import Modal from './ui/Modal';
+import Button from './ui/Button';
 
 interface CrownModalProps {
   state: GameStateSync;
@@ -40,15 +45,23 @@ export default function CrownModal({ state, myPlayerId, onChooseCrown }: CrownMo
 
   if (!isMyTurn) {
     return (
-      <div className="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl">
-          <div className="text-4xl mb-3 animate-bounce">👑</div>
-          <h3 className="text-lg font-bold text-white mb-1">Crown Challenge!</h3>
-          <p className="text-xs text-slate-400">
-            Opponent is selecting a Crown Character to challenge...
-          </p>
+      <Modal isOpen={true} maxWidth="sm">
+        <div className="text-center py-6 flex flex-col items-center gap-3">
+          <motion.div
+            animate={{ rotate: [0, -10, 10, -5, 0], scale: [1, 1.1, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="w-16 h-16 rounded-3xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-3xl shadow-xl shadow-amber-500/10"
+          >
+            👑
+          </motion.div>
+          <div>
+            <h3 className="text-lg font-black text-white">Crown Challenge!</h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Opponent is selecting a character champion to duel…
+            </p>
+          </div>
         </div>
-      </div>
+      </Modal>
     );
   }
 
@@ -64,177 +77,177 @@ export default function CrownModal({ state, myPlayerId, onChooseCrown }: CrownMo
     }
   };
 
+  const selectedProfile = selectedTarget ? CHARACTER_PROFILES[selectedTarget as Category] : null;
+
   return (
-    <div className="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl p-5 max-w-md w-full shadow-2xl flex flex-col gap-4 animate-scale-up">
-        {/* Header */}
-        <div className="text-center">
-          <div className="w-12 h-12 mx-auto mb-2 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-2xl shadow-inner">
-            👑
-          </div>
-          <h2 className="text-xl font-black text-white tracking-tight">Crown Challenge!</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Answer correctly to win a character crown and retain your turn
-          </p>
+    <Modal isOpen={true} maxWidth="md" className="max-h-[92dvh] overflow-y-auto">
+      {/* Header Banner */}
+      <div className="text-center">
+        <div className="w-14 h-14 mx-auto mb-2 rounded-2xl bg-gradient-to-tr from-amber-400 to-yellow-500 text-slate-950 flex items-center justify-center text-3xl font-black shadow-lg shadow-amber-500/30 border border-yellow-200">
+          👑
         </div>
-
-        {/* Action Toggle (Claim vs Steal) */}
-        {canSteal && (
-          <div className="flex bg-slate-950 p-1 rounded-2xl border border-slate-800">
-            <button
-              onClick={() => {
-                setMode('claim');
-                setSelectedTarget(unownedCategories[0] || null);
-              }}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
-                mode === 'claim'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              👑 Claim New Crown
-            </button>
-            <button
-              onClick={() => {
-                setMode('steal');
-                setSelectedTarget(opponentCrowns[0] || null);
-              }}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
-                mode === 'steal'
-                  ? 'bg-amber-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              ⚔️ Steal from Opponent
-            </button>
-          </div>
-        )}
-
-        {/* Claim Mode: Select Category to Win */}
-        {mode === 'claim' ? (
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-2">
-              Select a crown character to play for:
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {unownedCategories.map((cat) => {
-                const info = CATEGORIES[cat];
-                const isSelected = selectedTarget === cat;
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedTarget(cat)}
-                    className={`flex items-center gap-2.5 p-2.5 rounded-2xl border text-left transition-all ${
-                      isSelected
-                        ? 'border-yellow-400 bg-yellow-400/10 ring-2 ring-yellow-400 shadow-lg'
-                        : 'border-slate-800 bg-slate-850 hover:bg-slate-800 text-slate-300'
-                    }`}
-                  >
-                    <div
-                      className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold text-white shadow"
-                      style={{ backgroundColor: info.color }}
-                    >
-                      {cat === 'ART' && '🎨'}
-                      {cat === 'SCIENCE' && '🔬'}
-                      {cat === 'SPORTS' && '🏆'}
-                      {cat === 'ENTERTAINMENT' && '🎬'}
-                      {cat === 'GEOGRAPHY' && '🌍'}
-                      {cat === 'HISTORY' && '⏳'}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs font-bold text-white truncate">{info.characterName}</div>
-                      <div className="text-[10px] text-slate-400 truncate">{info.name}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          /* Steal Mode: Select Opponent's Crown and Wager One of Yours */
-          <div className="flex flex-col gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-amber-300 mb-1.5">
-                1. Target Opponent's Crown to Capture:
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {opponentCrowns.map((cat) => {
-                  const info = CATEGORIES[cat];
-                  const isSelected = selectedTarget === cat;
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedTarget(cat)}
-                      className={`flex items-center gap-2.5 p-2.5 rounded-2xl border text-left transition-all ${
-                        isSelected
-                          ? 'border-amber-400 bg-amber-400/10 ring-2 ring-amber-400 shadow-lg'
-                          : 'border-slate-800 bg-slate-850 hover:bg-slate-800 text-slate-300'
-                      }`}
-                    >
-                      <div
-                        className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold text-white shadow"
-                        style={{ backgroundColor: info.color }}
-                      >
-                        👑
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-bold text-white truncate">{info.characterName}</div>
-                        <div className="text-[10px] text-slate-400 truncate">{info.name}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-rose-300 mb-1.5">
-                2. Wager One of Your Crowns (Risk of Forfeit):
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {myCrowns.map((cat) => {
-                  const info = CATEGORIES[cat];
-                  const isSelected = selectedWager === cat;
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedWager(cat)}
-                      className={`flex items-center gap-2.5 p-2.5 rounded-2xl border text-left transition-all ${
-                        isSelected
-                          ? 'border-rose-400 bg-rose-400/10 ring-2 ring-rose-400 shadow-lg'
-                          : 'border-slate-800 bg-slate-850 hover:bg-slate-800 text-slate-300'
-                      }`}
-                    >
-                      <div
-                        className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold text-white shadow"
-                        style={{ backgroundColor: info.color }}
-                      >
-                        ⚠️
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-bold text-white truncate">{info.characterName}</div>
-                        <div className="text-[10px] text-slate-400 truncate">{info.name}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <p className="text-[10px] text-rose-400 italic">
-              * Notice: If you answer incorrectly, you lose your wagered crown to your opponent!
-            </p>
-          </div>
-        )}
-
-        {/* Confirm Button */}
-        <button
-          onClick={handleConfirm}
-          disabled={!selectedTarget || (mode === 'steal' && !selectedWager)}
-          className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-extrabold text-sm rounded-2xl shadow-lg transition-transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none"
-        >
-          {mode === 'claim' ? 'Start Crown Question' : 'Initiate Crown Steal Battle!'}
-        </button>
+        <h2 className="text-2xl font-black text-white tracking-tight">Crown Duel!</h2>
+        <p className="text-xs text-slate-300 mt-0.5">
+          Select a character guardian to challenge. Answer correctly to claim their crown!
+        </p>
       </div>
-    </div>
+
+      {/* Mode Switcher (Claim vs Steal) */}
+      {canSteal && (
+        <div className="flex bg-slate-950/80 p-1 rounded-2xl border border-slate-800">
+          <button
+            onClick={() => {
+              setMode('claim');
+              playButtonPop();
+            }}
+            className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+              mode === 'claim'
+                ? 'bg-amber-500 text-slate-950 shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            🎯 Claim New Crown
+          </button>
+          <button
+            onClick={() => {
+              setMode('steal');
+              playButtonPop();
+            }}
+            className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+              mode === 'steal'
+                ? 'bg-red-500 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            ⚔️ Steal Opponent Crown
+          </button>
+        </div>
+      )}
+
+      {/* Steal Mode: Select Your Wager */}
+      {mode === 'steal' && (
+        <div className="p-3 bg-red-950/30 border border-red-800/40 rounded-2xl">
+          <span className="text-[10px] font-black uppercase text-red-300 tracking-wider block mb-2">
+            1. Select Your Wager (You risk losing this if you fail):
+          </span>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {myCrowns.map((cat: Category) => {
+              const isSelected = selectedWager === cat;
+              const catInfo = CATEGORIES[cat];
+              return (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    setSelectedWager(cat);
+                    playButtonPop();
+                  }}
+                  className={`p-2 rounded-xl flex flex-col items-center gap-1 border transition-all ${
+                    isSelected
+                      ? 'bg-red-600/30 border-red-400 ring-2 ring-red-400'
+                      : 'bg-slate-900 border-slate-800 opacity-60'
+                  }`}
+                >
+                  <CategoryCharacter category={cat} size="xs" />
+                  <span className="text-[10px] font-bold text-white truncate max-w-full">
+                    {catInfo.characterName}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Category Selection Grid */}
+      <div>
+        <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-2">
+          {mode === 'claim' ? 'Choose Champion Crown to Win:' : '2. Choose Opponent Crown to Seize:'}
+        </span>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          {((mode === 'claim' ? unownedCategories : opponentCrowns) as Category[]).map((cat: Category) => {
+            const isSelected = selectedTarget === cat;
+            const profile = CHARACTER_PROFILES[cat as Category];
+
+            return (
+              <motion.button
+                key={cat}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  setSelectedTarget(cat);
+                  playButtonPop();
+                }}
+                className={`p-3 rounded-2xl border text-left flex items-center gap-3 transition-all relative overflow-hidden ${
+                  isSelected
+                    ? 'ring-2 ring-white shadow-xl shadow-indigo-500/20'
+                    : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'
+                }`}
+                style={{
+                  backgroundColor: isSelected ? `${profile.color}25` : undefined,
+                  borderColor: isSelected ? profile.color : undefined
+                }}
+              >
+                <CategoryCharacter
+                  category={cat}
+                  size="sm"
+                  mood={isSelected ? 'celebrating' : 'idle'}
+                />
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-white truncate">{profile.name}</div>
+                  <div className="text-[10px] text-slate-300 font-medium truncate">{profile.title}</div>
+                </div>
+              </motion.button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Selected Champion Spotlight */}
+      <AnimatePresence mode="wait">
+        {selectedProfile && (
+          <motion.div
+            key={selectedProfile.category}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-2xl flex items-center gap-3.5"
+          >
+            <CategoryCharacter
+              category={selectedProfile.category}
+              size="md"
+              mood="happy"
+              showCrown
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-sm text-white">{selectedProfile.name}</span>
+                <span
+                  className="text-[9px] font-bold px-2 py-0.5 rounded-full text-white"
+                  style={{ backgroundColor: selectedProfile.color }}
+                >
+                  {CATEGORIES[selectedProfile.category].name}
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-200/90 italic mt-0.5">
+                "{selectedProfile.quotes.claim}"
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Confirm Button */}
+      <Button
+        variant="primary"
+        size="lg"
+        glow
+        onClick={handleConfirm}
+        disabled={!selectedTarget || (mode === 'steal' && !selectedWager)}
+        className="w-full"
+      >
+        {mode === 'claim' ? '⚡ Start Crown Question!' : '⚔️ Initiate Steal Duel!'}
+      </Button>
+    </Modal>
   );
 }

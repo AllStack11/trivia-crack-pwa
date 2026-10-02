@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { motion } from 'motion/react';
 import type {
   ActiveQuestionSync,
   QuestionResult,
@@ -14,11 +15,13 @@ import Wheel from './components/Wheel';
 import { useGameSync } from './hooks/useGameSync';
 import type { AccountSession } from './components/Lobby';
 import { apiUrl } from './utils/api';
-
-import { playFanfare, playCorrectChime } from './utils/audio';
+import { playFanfare, playCorrectChime, isAudioMuted, setAudioMuted, playButtonPop } from './utils/audio';
 import confetti from 'canvas-confetti';
 import { Ssgoi, type SsgoiConfig } from '@ssgoi/react';
 import { drill, sheet, fade } from '@ssgoi/react/view-transitions';
+import AnimatedBackground from './components/ui/AnimatedBackground';
+import Button from './components/ui/Button';
+import Card from './components/ui/Card';
 
 type AppView = 'LOBBY' | 'PACK_CREATOR' | 'GAME';
 
@@ -37,6 +40,7 @@ export default function App() {
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
   const [account, setAccount] = useState<AccountSession | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [muted, setMuted] = useState<boolean>(isAudioMuted());
 
   // Wheel animation control state to prevent skipping the spinner
   const [isWheelSpinning, setIsWheelSpinning] = useState<boolean>(false);
@@ -64,7 +68,7 @@ export default function App() {
               headers: { Authorization: `Bearer ${saved.token}` }
             });
             if (response.ok) {
-              const data = await response.json() as { account: { id: string; username: string } };
+              const data = (await response.json()) as { account: { id: string; username: string } };
               if (mounted) {
                 setAccount({ ...data.account, token: saved.token });
                 if (window.location.pathname.startsWith('/game/')) {
@@ -82,12 +86,18 @@ export default function App() {
       }
     };
     void restore();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleAuth = (authenticated: AccountSession) => {
     setAccount(authenticated);
-    try { localStorage.setItem('trivia_clash_account', JSON.stringify(authenticated)); } catch { /* Storage may be unavailable. */ }
+    try {
+      localStorage.setItem('trivia_clash_account', JSON.stringify(authenticated));
+    } catch {
+      /* Storage may be unavailable. */
+    }
     if (window.location.pathname.startsWith('/game/')) {
       const gameId = decodeURIComponent(window.location.pathname.slice('/game/'.length));
       setActiveGameId(gameId);
@@ -98,8 +108,13 @@ export default function App() {
   const handleLogout = useCallback(async () => {
     if (account) {
       try {
-        await fetch(apiUrl('/api/auth/logout'), { method: 'POST', headers: { Authorization: `Bearer ${account.token}` } });
-      } catch { /* Local credentials are cleared even when the network is unavailable. */ }
+        await fetch(apiUrl('/api/auth/logout'), {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${account.token}` }
+        });
+      } catch {
+        /* Local credentials are cleared even when network is unavailable. */
+      }
     }
     setAccount(null);
     setActiveGameId(null);
@@ -122,22 +137,36 @@ export default function App() {
       if (path === '/packs') setView('PACK_CREATOR');
       else if (path.startsWith('/game/')) {
         const gameId = path.slice('/game/'.length);
-        if (gameId) { setActiveGameId(decodeURIComponent(gameId)); setView('GAME'); }
-      } else { setActiveGameId(null); setView('LOBBY'); }
+        if (gameId) {
+          setActiveGameId(decodeURIComponent(gameId));
+          setView('GAME');
+        }
+      } else {
+        setActiveGameId(null);
+        setView('LOBBY');
+      }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   const {
-    gameState, isConnected, loading: gameLoading, error: gameError, targetDegrees, lastResult, spin, answer, chooseCrown, resign
+    gameState,
+    isConnected,
+    loading: gameLoading,
+    error: gameError,
+    targetDegrees,
+    lastResult,
+    spin,
+    answer,
+    chooseCrown,
+    resign
   } = useGameSync({
     gameId: activeGameId,
     accountId: account?.id ?? null,
     sessionToken: account?.token ?? null,
     onUnauthorized: handleUnauthorized
   });
-
 
   // When spectator (Player 2) receives opponent's spin via SSE, trigger wheel animation
   useEffect(() => {
@@ -179,9 +208,9 @@ export default function App() {
       if (gameState.winnerId === account?.id) {
         playFanfare();
         confetti({
-          particleCount: 120,
-          spread: 80,
-          origin: { y: 0.5 }
+          particleCount: 140,
+          spread: 85,
+          origin: { y: 0.45 }
         });
       }
     }
@@ -203,8 +232,11 @@ export default function App() {
   };
 
   const handleNavigateToLobby = () => {
-    if (gameState?.status === 'IN_PROGRESS' &&
-        !confirm('Leave this game? You can resume it from your matches.')) return;
+    if (
+      gameState?.status === 'IN_PROGRESS' &&
+      !confirm('Leave this game? You can resume it from your matches dashboard.')
+    )
+      return;
     setActiveGameId(null);
     setIsWheelSpinning(false);
     setLandedCategoryName(null);
@@ -234,14 +266,14 @@ export default function App() {
     setLandedCategoryName(catName);
     playCorrectChime();
 
-    // Brief celebratory pause so the user clearly sees where the wheel landed
+    // Celebratory pause before transitioning to Question
     setTimeout(() => {
       setIsWheelSpinning(false);
       setLandedCategoryName(null);
-    }, 850);
+    }, 900);
   }, []);
 
-  // Answer question and hold result on screen for 3s to show green/red outcome
+  // Answer question and hold result on screen for 3s to show outcome
   const handleAnswerQuestion = async (
     targetQuestion: ActiveQuestionSync,
     ansIdx: number,
@@ -260,12 +292,17 @@ export default function App() {
     }
   };
 
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    setAudioMuted(next);
+    playButtonPop();
+  };
+
   const isMyTurn = Boolean(
     gameState && account && gameState.currentTurnPlayerId === account.id
   );
 
-  // Determine whether to display Wheel vs Question vs Crown Modal
-  // While isWheelSpinning is true, the Wheel remains visible until the spin is complete!
   const shouldShowWheel =
     !activeReviewResult &&
     gameState?.status === 'IN_PROGRESS' &&
@@ -286,20 +323,34 @@ export default function App() {
     gameState?.status === 'IN_PROGRESS' &&
     gameState.mode === 'CROWN_CHOICE';
 
+  const activeCategory = shouldShowQuestion
+    ? activeReviewResult?.question.category ?? gameState?.activeQuestion?.category ?? null
+    : null;
+
   return (
     <Ssgoi config={ssgoiConfig}>
-      <div className="h-[100dvh] max-h-[100dvh] bg-slate-950 text-slate-100 flex flex-col justify-between p-2 sm:p-4 overflow-hidden">
+      {/* Dynamic Cosmic Animated Background with Reactive Category Lighting */}
+      <AnimatedBackground activeCategory={activeCategory} />
+
+      <div className="h-[100dvh] max-h-[100dvh] text-slate-100 flex flex-col justify-between p-2 sm:p-4 overflow-hidden relative z-10">
         {/* View: Pack Creator */}
         {view === 'PACK_CREATOR' && (
-          <main className="flex-1 flex items-center justify-center py-2 animate-scale-up">
+          <main className="flex-1 flex items-center justify-center py-2 animate-scale-up z-20">
             <PackCreator onBack={handleNavigateToLobby} />
           </main>
         )}
 
         {/* View: Lobby */}
         {view === 'LOBBY' && (
-          <main className="flex-1 flex items-center justify-center py-2 animate-fade-in">
-            {authLoading ? <div className="text-sm text-slate-400">Restoring your account…</div> : (
+          <main className="flex-1 flex items-center justify-center py-2 z-20">
+            {authLoading ? (
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-xl animate-spin">
+                  👑
+                </div>
+                <div className="text-sm font-bold text-slate-300">Restoring your account…</div>
+              </div>
+            ) : (
               <Lobby
                 account={account}
                 onAuth={handleAuth}
@@ -313,50 +364,70 @@ export default function App() {
 
         {/* View: Active Game */}
         {view === 'GAME' && account && gameState && (
-          <div className="flex-1 flex flex-col max-w-md mx-auto w-full gap-1.5 sm:gap-2.5 h-full overflow-hidden justify-between animate-fade-in">
-            {/* Room Header Bar */}
-            <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs shrink-0">
-              <div className="flex items-center gap-2">
+          <div className="flex-1 flex flex-col max-w-md mx-auto w-full gap-2 sm:gap-3 h-full overflow-hidden justify-between z-20">
+            {/* Top Navigation & Status Bar */}
+            <div className="flex items-center justify-between bg-slate-900/80 backdrop-blur-xl border border-slate-700/80 rounded-2xl px-3.5 py-2 text-xs shrink-0 shadow-lg">
+              <div className="flex items-center gap-2.5">
                 <button
                   onClick={handleNavigateToLobby}
-                  className="text-slate-400 hover:text-white font-bold transition"
+                  className="text-slate-300 hover:text-white font-extrabold flex items-center gap-1 transition"
                 >
-                  ← Lobby
+                  <span>←</span>
+                  <span>Lobby</span>
                 </button>
                 <span className="text-slate-700">|</span>
-                <span className="font-bold text-yellow-400">
-                  vs. {gameState.players.p1.id === account.id ? gameState.players.p2?.username : gameState.players.p1.username}
+                <span className="font-extrabold text-amber-300 truncate max-w-[160px]">
+                  vs.{' '}
+                  {gameState.players.p1.id === account.id
+                    ? gameState.players.p2?.username ?? 'Waiting…'
+                    : gameState.players.p1.username}
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
-                {/* Connection Indicator */}
+              <div className="flex items-center gap-2.5">
+                {/* Audio quick toggle */}
+                <button
+                  onClick={toggleMute}
+                  className="text-xs p-1 rounded-lg hover:bg-slate-800 transition"
+                  title={muted ? 'Unmute Audio' : 'Mute Audio'}
+                >
+                  {muted ? '🔇' : '🔊'}
+                </button>
+
+                {/* Connection Status */}
                 <div
-                  className="flex items-center gap-1"
-                  title={isConnected ? 'Realtime Connected' : 'Reconnecting...'}
+                  className="flex items-center gap-1.5 bg-slate-950/60 px-2 py-0.5 rounded-full border border-slate-800"
+                  title={isConnected ? 'Realtime Match Active' : 'Connecting to match…'}
                 >
                   <span
-                    className={`w-2 h-2 rounded-full ${
+                    className={`w-1.5 h-1.5 rounded-full ${
                       isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
                     }`}
                   />
-                  <span className="text-[10px] text-slate-400">
-                    {isConnected ? 'LIVE' : 'SYNCING'}
+                  <span className="text-[9px] font-black text-slate-300 uppercase tracking-wider">
+                    {isConnected ? 'LIVE' : 'SYNC'}
                   </span>
                 </div>
-
               </div>
             </div>
-            {gameError && <div role="alert" className="p-2 bg-red-950/50 border border-red-800 rounded-xl text-xs text-red-300">{gameError}</div>}
+
+            {gameError && (
+              <div
+                role="alert"
+                className="p-2.5 bg-red-950/70 border border-red-800 rounded-2xl text-xs text-red-200 text-center font-bold"
+              >
+                {gameError}
+              </div>
+            )}
 
             {/* Players Crown Status Bar */}
             <CrownBar state={gameState} myPlayerId={account.id} />
 
-            {/* Center Stage: Wheel vs Question vs Crown Modal */}
+            {/* Center Stage Area */}
             <div className="flex-1 min-h-0 flex flex-col justify-center items-center py-0.5 overflow-y-auto w-full">
-              {/* Mode: WHEEL SPINNING */}
+              {/* STAGE: WHEEL */}
               {shouldShowWheel && (
-                <div className="w-full flex flex-col items-center justify-center animate-fade-in relative">
+                <div className="w-full flex flex-col items-center justify-center relative">
                   <Wheel
                     canSpin={isMyTurn && !isWheelSpinning}
                     isSpinning={isWheelSpinning}
@@ -365,20 +436,27 @@ export default function App() {
                     onSpinComplete={handleSpinComplete}
                   />
 
-                  {/* Landed category celebratory toast */}
                   {landedCategoryName && (
-                    <div className="absolute bottom-1 bg-yellow-400 text-slate-950 px-4 py-1.5 rounded-full font-black text-xs shadow-xl animate-bounce">
+                    <motion.div
+                      initial={{ scale: 0, y: 10 }}
+                      animate={{ scale: 1, y: 0 }}
+                      className="absolute bottom-2 bg-gradient-to-r from-amber-400 to-yellow-400 text-slate-950 px-4 py-1.5 rounded-full font-black text-xs shadow-2xl border border-yellow-200"
+                    >
                       🎯 {landedCategoryName}
-                    </div>
+                    </motion.div>
                   )}
                 </div>
               )}
 
-              {/* Mode: QUESTION ACTIVE OR RESULT REVIEW */}
+              {/* STAGE: QUESTION */}
               {shouldShowQuestion && (activeReviewResult || gameState.activeQuestion) && (
-                <div className="w-full animate-scale-up">
+                <div className="w-full">
                   <QuestionView
-                    question={activeReviewResult ? activeReviewResult.question : gameState.activeQuestion!}
+                    question={
+                      activeReviewResult
+                        ? activeReviewResult.question
+                        : gameState.activeQuestion!
+                    }
                     isMyTurn={isMyTurn && !activeReviewResult}
                     onAnswer={(ansIdx, timeMs) => {
                       if (gameState.activeQuestion) {
@@ -394,7 +472,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* Mode: CROWN CHOICE MODAL */}
+              {/* STAGE: CROWN CHOICE MODAL */}
               {shouldShowCrownModal && (
                 <CrownModal
                   state={gameState}
@@ -405,66 +483,82 @@ export default function App() {
                 />
               )}
 
-              {/* Mode: GAME OVER */}
+              {/* STAGE: GAME OVER CELEBRATION */}
               {gameState.status === 'COMPLETED' && (
-                <div className="w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center shadow-2xl flex flex-col items-center gap-4 animate-scale-up">
-                  <div className="text-5xl animate-bounce">🏆</div>
+                <Card
+                  variant="glow"
+                  className="w-full p-6 text-center shadow-2xl flex flex-col items-center gap-4 border border-amber-400/40 relative z-30"
+                >
+                  <motion.div
+                    animate={{ rotate: [0, -10, 10, -5, 0], scale: [1, 1.15, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-400 via-amber-500 to-yellow-400 text-slate-950 flex items-center justify-center text-4xl shadow-xl shadow-amber-500/30 border-2 border-yellow-200"
+                  >
+                    👑
+                  </motion.div>
+
                   <div>
-                    <h2 className="text-2xl font-black text-white">
+                    <h2 className="text-2xl font-black text-white tracking-tight">
                       {gameState.winnerId === account.id
-                        ? 'Victory is Yours!'
+                        ? '🎉 Victory is Yours!'
                         : `${
                             gameState.winnerId === gameState.players.p1.id
                               ? gameState.players.p1.username
-                              : gameState.players.p2?.username
+                              : gameState.players.p2?.username ?? 'Opponent'
                           } Won the Match!`}
                     </h2>
-                    <p className="text-xs text-yellow-400 font-bold mt-1">
-                      {gameState.winReason || 'Game Concluded'}
+                    <p className="text-xs text-amber-300 font-extrabold mt-1 uppercase tracking-wider">
+                      {gameState.winReason || 'Crown Duel Concluded'}
                     </p>
                   </div>
 
-                  <div className="w-full bg-slate-950 p-4 rounded-2xl border border-slate-800 flex justify-around items-center text-xs">
+                  {/* Player Summary Stats Grid */}
+                  <div className="w-full bg-slate-950/80 p-4 rounded-2xl border border-slate-800 flex justify-around items-center text-xs">
                     <div>
-                      <div className="text-slate-400 font-medium">
+                      <div className="text-slate-400 font-bold">
                         {gameState.players.p1.username}
                       </div>
-                      <div className="text-lg font-black text-yellow-400">
+                      <div className="text-lg font-black text-amber-400">
                         👑 {gameState.players.p1.crowns.length}
                       </div>
-                      <div className="text-[10px] text-slate-500">
+                      <div className="text-[10px] text-slate-500 font-medium">
                         ⭐ {gameState.players.p1.score} correct
                       </div>
                     </div>
 
-                    <div className="text-slate-600 font-bold">VS</div>
+                    <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center font-black text-slate-400 text-xs">
+                      VS
+                    </div>
 
                     <div>
-                      <div className="text-slate-400 font-medium">
-                        {gameState.players.p2?.username || 'P2'}
+                      <div className="text-slate-400 font-bold">
+                        {gameState.players.p2?.username || 'Opponent'}
                       </div>
-                      <div className="text-lg font-black text-yellow-400">
+                      <div className="text-lg font-black text-amber-400">
                         👑 {gameState.players.p2?.crowns.length || 0}
                       </div>
-                      <div className="text-[10px] text-slate-500">
+                      <div className="text-[10px] text-slate-500 font-medium">
                         ⭐ {gameState.players.p2?.score || 0} correct
                       </div>
                     </div>
                   </div>
 
-                  <button
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    glow
                     onClick={handleNavigateToLobby}
-                    className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-sm rounded-2xl shadow-lg transition transform active:scale-95"
+                    className="w-full"
                   >
-                    Return to Match Lobby
-                  </button>
-                </div>
+                    Return to Lobby ➔
+                  </Button>
+                </Card>
               )}
             </div>
 
-            {/* Resign / Surrender Button in footer when match is active */}
+            {/* Match In-Progress Footer: Forfeit option */}
             {gameState.status === 'IN_PROGRESS' && (
-              <div className="flex justify-center shrink-0 py-0.5">
+              <div className="flex justify-center shrink-0 py-1">
                 <button
                   onClick={() => {
                     if (confirm('Are you sure you want to forfeit this match?')) {
@@ -481,14 +575,14 @@ export default function App() {
         )}
 
         {view === 'GAME' && account && !gameState && (
-          <main className="flex-1 flex items-center justify-center text-sm text-slate-400">
+          <main className="flex-1 flex items-center justify-center text-sm text-slate-400 z-20">
             {gameError || (gameLoading ? 'Loading match…' : 'Match unavailable')}
           </main>
         )}
 
-        {/* Footer */}
-        <footer className="text-center py-1 text-[10px] text-slate-600 shrink-0">
-          Trivia Clash • Free Turn-Based Multiplayer PWA
+        {/* Global Footer */}
+        <footer className="text-center py-1 text-[10px] text-slate-500 font-medium shrink-0 z-20">
+          Trivia Clash • Turn-Based Crown Duels
         </footer>
       </div>
     </Ssgoi>

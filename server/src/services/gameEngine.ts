@@ -330,11 +330,24 @@ export async function answerQuestion(
 
   // Record answer in log
   const answerLogId = `ans_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  await db.execute(
-    `INSERT INTO game_answers (id, game_id, player_id, question_id, is_correct, time_spent_ms, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [answerLogId, gameId, playerId, questionId, wasCorrect ? 1 : 0, timeSpentMs, now]
-  );
+  try {
+    await db.batch([
+      {
+        sql: 'INSERT INTO game_answer_claims (game_id, question_id) VALUES (?, ?)',
+        params: [gameId, questionId]
+      },
+      {
+        sql: `INSERT INTO game_answers (id, game_id, player_id, question_id, is_correct, time_spent_ms, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        params: [answerLogId, gameId, playerId, questionId, wasCorrect ? 1 : 0, timeSpentMs, now]
+      }
+    ]);
+  } catch (error) {
+    if (error instanceof Error && /unique|constraint/i.test(error.message)) {
+      throw new Error('This question has already been answered');
+    }
+    throw error;
+  }
 
   let awardedCrown: Category | undefined;
   let stolenCrown: Category | undefined;

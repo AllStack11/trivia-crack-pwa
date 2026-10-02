@@ -66,6 +66,14 @@ CREATE TABLE IF NOT EXISTS game_answers (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS game_answer_claims (
+  game_id TEXT NOT NULL,
+  question_id TEXT NOT NULL,
+  PRIMARY KEY (game_id, question_id)
+);
+INSERT OR IGNORE INTO game_answer_claims (game_id, question_id)
+  SELECT game_id, question_id FROM game_answers;
+
 CREATE INDEX IF NOT EXISTS idx_games_invite ON games(invite_code);
 CREATE INDEX IF NOT EXISTS idx_questions_pack_cat ON questions(pack_id, category);
 CREATE INDEX IF NOT EXISTS idx_game_crowns_lookup ON game_crowns(game_id, player_id);

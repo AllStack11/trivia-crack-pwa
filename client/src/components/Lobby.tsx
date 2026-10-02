@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { motion } from 'motion/react';
 import type {
   AccountSummary,
   AuthResponse,
@@ -9,6 +10,10 @@ import type {
 } from '../../../shared/src/index';
 import { isAudioMuted, playButtonPop, setAudioMuted } from '../utils/audio';
 import { apiUrl } from '../utils/api';
+import Card from './ui/Card';
+import Button from './ui/Button';
+import Badge from './ui/Badge';
+import CharacterShowcase from './characters/CharacterShowcase';
 
 export type AccountSession = AccountSummary & { token: string };
 
@@ -30,7 +35,15 @@ async function readResponse<T>(response: Response): Promise<T> {
   return data;
 }
 
-export default function Lobby({ account, onAuth, onLogout, onOpenGame, onOpenPackCreator }: LobbyProps) {
+type LobbyTab = 'matches' | 'players' | 'champions' | 'packs';
+
+export default function Lobby({
+  account,
+  onAuth,
+  onLogout,
+  onOpenGame,
+  onOpenPackCreator
+}: LobbyProps) {
   const [packs, setPacks] = useState<QuestionPackMeta[]>([]);
   const [selectedPackIds, setSelectedPackIds] = useState<string[]>(['default']);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -43,6 +56,7 @@ export default function Lobby({ account, onAuth, onLogout, onOpenGame, onOpenPac
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [muted, setMuted] = useState<boolean>(isAudioMuted());
+  const [activeTab, setActiveTab] = useState<LobbyTab>('matches');
 
   const authFetch = useCallback(async (path: string, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
@@ -76,9 +90,15 @@ export default function Lobby({ account, onAuth, onLogout, onOpenGame, onOpenPac
     fetch(apiUrl('/api/packs'))
       .then((res) => readResponse<QuestionPackMeta[]>(res))
       .then(setPacks)
-      .catch((error: unknown) => setErrorMessage(error instanceof Error ? error.message : 'Could not load question packs'));
+      .catch((error: unknown) =>
+        setErrorMessage(error instanceof Error ? error.message : 'Could not load question packs')
+      );
   }, []);
-  useEffect(() => { void refreshDashboard(); }, [refreshDashboard]);
+
+  useEffect(() => {
+    void refreshDashboard();
+  }, [refreshDashboard]);
+
   useEffect(() => {
     if (!account) return;
     const interval = window.setInterval(() => void refreshDashboard(), 10_000);
@@ -91,97 +111,545 @@ export default function Lobby({ account, onAuth, onLogout, onOpenGame, onOpenPac
     setErrorMessage(null);
     try {
       const payload = registering ? { username, email, password } : { email, password };
-      const data = await readResponse<AuthResponse>(await fetch(apiUrl(`/api/auth/${registering ? 'register' : 'login'}`), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-      }));
+      const data = await readResponse<AuthResponse>(
+        await fetch(apiUrl(`/api/auth/${registering ? 'register' : 'login'}`), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+      );
       onAuth({ ...data.account, token: data.token });
       setPassword('');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Authentication failed');
-    } finally { setLoadingAction(null); }
+    } finally {
+      setLoadingAction(null);
+    }
   };
 
   const perform = async (key: string, action: () => Promise<void>) => {
     setLoadingAction(key);
     setErrorMessage(null);
-    try { await action(); } catch (error) {
+    try {
+      await action();
+    } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Request failed');
-    } finally { setLoadingAction(null); }
+    } finally {
+      setLoadingAction(null);
+    }
   };
 
-  const sendInvitation = (recipientId: string) => perform(`invite:${recipientId}`, async () => {
-    await readResponse(await authFetch('/api/invitations', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recipientId, packIds: selectedPackIds })
-    }));
-    await refreshDashboard();
-  });
+  const sendInvitation = (recipientId: string) =>
+    perform(`invite:${recipientId}`, async () => {
+      await readResponse(
+        await authFetch('/api/invitations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipientId, packIds: selectedPackIds })
+        })
+      );
+      await refreshDashboard();
+    });
 
-  const respondToInvitation = (id: string, decision: 'accept' | 'decline') => perform(`respond:${id}`, async () => {
-    const data = await readResponse<{ gameId?: string | null }>(await authFetch(`/api/invitations/${encodeURIComponent(id)}/respond`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision })
-    }));
-    let acceptedGameId = decision === 'accept' ? data.gameId ?? null : null;
-    if (decision === 'accept' && !acceptedGameId) {
-      const previousGameIds = new Set(matches.map((match) => match.gameId));
-      const updatedMatches = await authFetch('/api/games').then((res) => readResponse<GameListResponse>(res));
-      setMatches(updatedMatches.matches);
-      acceptedGameId = updatedMatches.matches.find((match) => !previousGameIds.has(match.gameId))?.gameId ?? null;
-    }
-    await refreshDashboard();
-    if (acceptedGameId) onOpenGame(acceptedGameId);
-  });
+  const respondToInvitation = (id: string, decision: 'accept' | 'decline') =>
+    perform(`respond:${id}`, async () => {
+      const data = await readResponse<{ gameId?: string | null }>(
+        await authFetch(`/api/invitations/${encodeURIComponent(id)}/respond`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ decision })
+        })
+      );
+      let acceptedGameId = decision === 'accept' ? data.gameId ?? null : null;
+      if (decision === 'accept' && !acceptedGameId) {
+        const previousGameIds = new Set(matches.map((match: Match) => match.gameId));
+        const updatedMatches = await authFetch('/api/games').then((res) =>
+          readResponse<GameListResponse>(res)
+        );
+        setMatches(updatedMatches.matches);
+        acceptedGameId =
+          updatedMatches.matches.find((match: Match) => !previousGameIds.has(match.gameId))?.gameId ?? null;
+      }
+      await refreshDashboard();
+      if (acceptedGameId) onOpenGame(acceptedGameId);
+    });
 
-  const togglePack = (packId: string) => setSelectedPackIds((selected) =>
-    selected.includes(packId) ? (selected.length > 1 ? selected.filter((id) => id !== packId) : selected) : [...selected, packId]
-  );
+  const togglePack = (packId: string) =>
+    setSelectedPackIds((selected) =>
+      selected.includes(packId)
+        ? selected.length > 1
+          ? selected.filter((id) => id !== packId)
+          : selected
+        : [...selected, packId]
+    );
+
   const toggleMute = () => {
     const next = !muted;
-    setMuted(next); setAudioMuted(next); playButtonPop();
+    setMuted(next);
+    setAudioMuted(next);
+    playButtonPop();
   };
 
   return (
-    <div className="w-full max-w-md mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col gap-4 max-h-[90dvh] overflow-y-auto">
+    <Card
+      variant="glass"
+      className="w-full max-w-lg mx-auto p-4 sm:p-6 flex flex-col gap-4 max-h-[92dvh] overflow-y-auto relative z-10 border border-slate-700/80 shadow-2xl"
+    >
+      {/* Top Branding Bar */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-yellow-500 flex items-center justify-center text-xl shadow-lg border border-yellow-300">👑</div>
-          <div><h1 className="text-xl font-black text-white tracking-tight">TRIVIA <span className="text-yellow-400">CLASH</span></h1><p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Turn-Based Crown Duels</p></div>
+        <div className="flex items-center gap-3">
+          <motion.div
+            whileHover={{ scale: 1.08, rotate: -5 }}
+            whileTap={{ scale: 0.95 }}
+            className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-400 via-amber-500 to-yellow-400 flex items-center justify-center text-2xl shadow-lg shadow-amber-500/25 border border-yellow-200 shrink-0"
+          >
+            👑
+          </motion.div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-none flex items-center gap-1.5">
+              <span>TRIVIA</span>
+              <span className="bg-gradient-to-r from-amber-400 to-yellow-300 bg-clip-text text-transparent">
+                CLASH
+              </span>
+            </h1>
+            <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest mt-0.5">
+              Turn-Based Crown Duels
+            </p>
+          </div>
         </div>
-        <div className="flex gap-1.5">
-          <button onClick={toggleMute} className="w-9 h-9 rounded-2xl bg-slate-800 border border-slate-700/60 text-sm" title={muted ? 'Unmute Audio' : 'Mute Audio'}>{muted ? '🔇' : '🔊'}</button>
-          {account && <button onClick={onLogout} disabled={loadingAction !== null} className="px-3 rounded-xl bg-slate-800 text-xs font-bold text-slate-200">Log out</button>}
+
+        {/* Audio Mute & Logout Buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleMute}
+            className="w-9 h-9 rounded-2xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 flex items-center justify-center text-sm transition-colors shadow"
+            title={muted ? 'Unmute Audio' : 'Mute Audio'}
+          >
+            {muted ? '🔇' : '🔊'}
+          </button>
+          {account && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onLogout}
+              disabled={loadingAction !== null}
+              className="text-xs"
+            >
+              Log out
+            </Button>
+          )}
         </div>
       </div>
 
-      {errorMessage && <div role="alert" className="p-3 bg-red-950/40 border border-red-800/40 rounded-2xl text-xs text-red-300 text-center animate-shake">{errorMessage}</div>}
+      {/* Error Alert Box */}
+      {errorMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          role="alert"
+          className="p-3 bg-red-950/60 border border-red-700/60 rounded-2xl text-xs text-red-200 text-center font-bold shadow-md shadow-red-950/50"
+        >
+          {errorMessage}
+        </motion.div>
+      )}
 
-      {!account ? <form onSubmit={handleAuth} className="flex flex-col gap-3">
-        <h2 className="text-lg font-black text-white">{registering ? 'Create account' : 'Welcome back'}</h2>
-        {registering && <label className="text-xs text-slate-300">Username<input required value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white" /></label>}
-        <label className="text-xs text-slate-300">Email<input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white" /></label>
-        <label className="text-xs text-slate-300">Password<input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={registering ? 'new-password' : 'current-password'} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white" /></label>
-        <button disabled={loadingAction !== null} className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black text-sm rounded-2xl disabled:opacity-50">{loadingAction === 'auth' ? 'Please wait…' : registering ? 'Create Account' : 'Log In'}</button>
-        <button type="button" onClick={() => { setRegistering(!registering); setErrorMessage(null); }} className="text-xs text-indigo-300">{registering ? 'Already have an account? Log in' : 'New here? Create an account'}</button>
-      </form> : <>
-        <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-2xl flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center font-black text-white">{account.username.charAt(0).toUpperCase()}</div>
-          <div><div className="text-[10px] uppercase font-bold text-slate-400">Signed in as</div><div className="text-sm font-bold text-white">{account.username}</div></div>
+      {/* Unauthenticated Mode (Login / Register) */}
+      {!account ? (
+        <div className="flex flex-col gap-4">
+          {/* Segmented Auth Mode Switcher */}
+          <div className="flex bg-slate-950/80 p-1 rounded-2xl border border-slate-800">
+            <button
+              onClick={() => {
+                setRegistering(false);
+                setErrorMessage(null);
+                playButtonPop();
+              }}
+              className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+                !registering
+                  ? 'bg-amber-500 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Log In
+            </button>
+            <button
+              onClick={() => {
+                setRegistering(true);
+                setErrorMessage(null);
+                playButtonPop();
+              }}
+              className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+                registering
+                  ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Create Account
+            </button>
+          </div>
+
+          <form onSubmit={handleAuth} className="flex flex-col gap-3">
+            {registering && (
+              <label className="text-xs font-bold text-slate-300">
+                Username
+                <input
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="username"
+                  placeholder="e.g. TriviaMaster"
+                  className="mt-1 w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
+                />
+              </label>
+            )}
+            <label className="text-xs font-bold text-slate-300">
+              Email Address
+              <input
+                required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                placeholder="you@example.com"
+                className="mt-1 w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
+              />
+            </label>
+            <label className="text-xs font-bold text-slate-300">
+              Password
+              <input
+                required
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={registering ? 'new-password' : 'current-password'}
+                placeholder="••••••••"
+                className="mt-1 w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
+              />
+            </label>
+
+            <Button
+              variant="primary"
+              size="lg"
+              glow
+              loading={loadingAction === 'auth'}
+              type="submit"
+              className="w-full mt-1"
+            >
+              {registering ? 'Create Your Account' : 'Sign In to Play'}
+            </Button>
+          </form>
+
+          {/* Feature Showcase Banner */}
+          <div className="pt-2">
+            <CharacterShowcase initialCategory="SCIENCE" />
+          </div>
         </div>
-        <section className="p-2.5 bg-slate-950/40 rounded-2xl border border-slate-800/60">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex justify-between"><span>Question Packs ({selectedPackIds.length} active)</span><button onClick={onOpenPackCreator} className="text-indigo-400">Manage Packs →</button></div>
-          <div className="flex flex-wrap gap-1.5">{packs.map((pack) => <button key={pack.id} onClick={() => togglePack(pack.id)} className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border ${selectedPackIds.includes(pack.id) ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-slate-850 text-slate-400 border-slate-800'}`}>{selectedPackIds.includes(pack.id) ? '✓ ' : '+ '}{pack.title} ({pack.questionCount})</button>)}</div>
-        </section>
-        <section className="flex flex-col gap-2"><h2 className="text-[11px] uppercase font-bold text-slate-400 tracking-wider">Players</h2>
-          {players.length === 0 ? <p className="text-xs text-slate-500">No other players yet.</p> : players.map((player) => <div key={player.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800"><span className="text-sm font-bold text-white">{player.username}</span><button onClick={() => void sendInvitation(player.id)} disabled={loadingAction !== null} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg disabled:opacity-40">{loadingAction === `invite:${player.id}` ? 'Sending…' : 'Invite'}</button></div>)}
-        </section>
-        <section className="flex flex-col gap-2"><h2 className="text-[11px] uppercase font-bold text-slate-400 tracking-wider">Incoming Invitations</h2>
-          {invitations.length === 0 ? <p className="text-xs text-slate-500">No pending invitations.</p> : invitations.map((invite) => <div key={invite.id} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between"><span className="text-sm text-white"><b>{invite.sender.username}</b> invited you</span><div className="flex gap-1.5"><button onClick={() => void respondToInvitation(invite.id, 'accept')} disabled={loadingAction !== null} className="px-2.5 py-1.5 bg-emerald-700 text-white text-xs font-bold rounded-lg">Accept</button><button onClick={() => void respondToInvitation(invite.id, 'decline')} disabled={loadingAction !== null} className="px-2.5 py-1.5 bg-slate-800 text-slate-300 text-xs font-bold rounded-lg">Decline</button></div></div>)}
-        </section>
-        <section className="flex flex-col gap-2"><h2 className="text-[11px] uppercase font-bold text-slate-400 tracking-wider">Matches</h2>
-          {matches.length === 0 ? <p className="text-xs text-slate-500">Your accepted matches will appear here.</p> : matches.map((match) => <button key={match.gameId} onClick={() => onOpenGame(match.gameId)} className="w-full text-left p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-indigo-500"><div className="flex justify-between text-sm font-bold text-white"><span>vs. {match.opponent.username}</span><span className="text-[10px] uppercase text-yellow-400">{match.status.replace('_', ' ')}</span></div><div className="mt-1 text-[11px] text-slate-400">{match.status === 'COMPLETED' ? 'Completed' : match.currentTurn.id === account.id ? 'Your turn' : `${match.currentTurn.username}'s turn`}</div></button>)}
-        </section>
-      </>}
-      <button onClick={onOpenPackCreator} className="w-full py-2 text-center text-xs font-bold text-slate-400 hover:text-indigo-400">📚 Custom Question Pack Creator & JSON Import →</button>
-    </div>
+      ) : (
+        /* Authenticated Dashboard */
+        <div className="flex flex-col gap-4">
+          {/* User Profile Card */}
+          <div className="p-3.5 bg-slate-950/60 border border-slate-800/90 rounded-2xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 to-violet-600 flex items-center justify-center font-black text-white text-base shadow-md">
+                {account.username.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                  Player Account
+                </div>
+                <div className="text-sm font-black text-white">{account.username}</div>
+              </div>
+            </div>
+
+            <Badge variant="turn" size="sm" pulse>
+              Online
+            </Badge>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="flex bg-slate-950/80 p-1 rounded-2xl border border-slate-800/80 text-xs">
+            <button
+              onClick={() => {
+                setActiveTab('matches');
+                playButtonPop();
+              }}
+              className={`flex-1 py-2 font-black rounded-xl transition-all relative ${
+                activeTab === 'matches'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>⚔️ Duels</span>
+              {matches.filter((m: Match) => m.status === 'IN_PROGRESS' && m.currentTurn.id === account.id).length > 0 && (
+                <span className="ml-1 w-2 h-2 inline-block rounded-full bg-amber-400 animate-ping" />
+              )}
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('players');
+                playButtonPop();
+              }}
+              className={`flex-1 py-2 font-black rounded-xl transition-all relative ${
+                activeTab === 'players'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>👥 Players</span>
+              {invitations.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 rounded-full bg-rose-500 text-[9px] text-white font-black">
+                  {invitations.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('champions');
+                playButtonPop();
+              }}
+              className={`flex-1 py-2 font-black rounded-xl transition-all ${
+                activeTab === 'champions'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>👑 Heroes</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('packs');
+                playButtonPop();
+              }}
+              className={`flex-1 py-2 font-black rounded-xl transition-all ${
+                activeTab === 'packs'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>📚 Packs</span>
+            </button>
+          </div>
+
+          {/* TAB 1: MATCHES */}
+          {activeTab === 'matches' && (
+            <section className="flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs uppercase font-black text-slate-400 tracking-wider">
+                  Active & Past Duels ({matches.length})
+                </h2>
+              </div>
+
+              {matches.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-slate-950/40 border border-slate-800/80 text-center">
+                  <span className="text-3xl block mb-2">⚔️</span>
+                  <p className="text-xs font-bold text-slate-300">No matches started yet.</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Switch to the "Players" tab and challenge an opponent!
+                  </p>
+                  <Button
+                    variant="accent"
+                    size="sm"
+                    onClick={() => setActiveTab('players')}
+                    className="mt-3"
+                  >
+                    Challenge a Player ➔
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {matches.map((match) => {
+                    const isMyTurn = match.status === 'IN_PROGRESS' && match.currentTurn.id === account.id;
+                    const isCompleted = match.status === 'COMPLETED';
+
+                    return (
+                      <motion.div
+                        key={match.gameId}
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        onClick={() => onOpenGame(match.gameId)}
+                        className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all duration-150 flex items-center justify-between gap-3 ${
+                          isMyTurn
+                            ? 'bg-indigo-950/60 border-indigo-400 shadow-lg shadow-indigo-600/15'
+                            : isCompleted
+                            ? 'bg-slate-950/40 border-slate-800/60 opacity-80'
+                            : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-800 border border-slate-600 flex items-center justify-center font-bold text-white text-sm shrink-0 shadow">
+                            {match.opponent.username.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-extrabold text-sm text-white truncate">
+                                vs. {match.opponent.username}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">
+                              {isCompleted ? (
+                                <span className="text-slate-400 font-bold">Match Finished</span>
+                              ) : isMyTurn ? (
+                                <span className="text-amber-300 font-black animate-pulse flex items-center gap-1">
+                                  <span>⚡</span> YOUR TURN TO MOVE!
+                                </span>
+                              ) : (
+                                <span>Waiting for {match.currentTurn.username}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 flex items-center gap-2">
+                          {isMyTurn ? (
+                            <Button variant="primary" size="sm" glow>
+                              PLAY ➔
+                            </Button>
+                          ) : (
+                            <Badge variant={isCompleted ? 'default' : 'gold'} size="sm">
+                              {isCompleted ? 'View' : 'Waiting'}
+                            </Badge>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* TAB 2: PLAYERS & INVITATIONS */}
+          {activeTab === 'players' && (
+            <section className="flex flex-col gap-3">
+              {/* Incoming Invitations */}
+              {invitations.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-xs uppercase font-black text-amber-400 tracking-wider flex items-center gap-1">
+                    <span>📬</span>
+                    <span>Incoming Challenges ({invitations.length})</span>
+                  </h3>
+                  {invitations.map((invite) => (
+                    <div
+                      key={invite.id}
+                      className="p-3 rounded-2xl bg-amber-950/30 border border-amber-500/40 flex items-center justify-between gap-3 shadow-lg"
+                    >
+                      <div>
+                        <span className="text-xs text-white">
+                          <b className="font-black text-amber-300">{invite.sender.username}</b> has challenged you!
+                        </span>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <Button
+                          variant="success"
+                          size="sm"
+                          disabled={loadingAction !== null}
+                          onClick={() => void respondToInvitation(invite.id, 'accept')}
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={loadingAction !== null}
+                          onClick={() => void respondToInvitation(invite.id, 'decline')}
+                        >
+                          Decline
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Player Directory */}
+              <div className="flex flex-col gap-2">
+                <h3 className="text-xs uppercase font-black text-slate-400 tracking-wider">
+                  Available Opponents ({players.length})
+                </h3>
+                {players.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-3 text-center">No other players found yet.</p>
+                ) : (
+                  players.map((player) => (
+                    <div
+                      key={player.id}
+                      className="flex items-center justify-between p-3 rounded-2xl bg-slate-950/70 border border-slate-800"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center font-bold text-xs text-white">
+                          {player.username.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="text-xs font-bold text-white">{player.username}</span>
+                      </div>
+                      <Button
+                        variant="accent"
+                        size="sm"
+                        disabled={loadingAction !== null}
+                        loading={loadingAction === `invite:${player.id}`}
+                        onClick={() => void sendInvitation(player.id)}
+                      >
+                        Challenge ⚔️
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* TAB 3: CHAMPIONS & CHARACTERS */}
+          {activeTab === 'champions' && (
+            <section className="flex flex-col gap-2">
+              <CharacterShowcase initialCategory="ART" />
+            </section>
+          )}
+
+          {/* TAB 4: PACKS */}
+          {activeTab === 'packs' && (
+            <section className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs uppercase font-black text-slate-400 tracking-wider">
+                  Active Trivia Packs ({selectedPackIds.length})
+                </h3>
+                <button
+                  onClick={onOpenPackCreator}
+                  className="text-xs font-bold text-indigo-400 hover:text-indigo-300"
+                >
+                  Manage / Create →
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {packs.map((pack) => {
+                  const isSelected = selectedPackIds.includes(pack.id);
+                  return (
+                    <button
+                      key={pack.id}
+                      onClick={() => togglePack(pack.id)}
+                      className={`px-3 py-2 rounded-2xl text-xs font-bold border transition-all ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
+                          : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      {isSelected ? '✓ ' : '+ '}
+                      {pack.title} ({pack.questionCount} Qs)
+                    </button>
+                  );
+                })}
+              </div>
+
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={onOpenPackCreator}
+                className="w-full mt-2"
+              >
+                📚 Open Custom Pack Studio & JSON Importer
+              </Button>
+            </section>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }

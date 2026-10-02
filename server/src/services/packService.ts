@@ -1,4 +1,4 @@
-import type { Category, QuestionData, QuestionPackExport, QuestionPackMeta } from '../../../shared/src/index';
+import { CATEGORIES, type Category, type QuestionData, type QuestionPackExport, type QuestionPackMeta } from '../../../shared/src/index';
 import type { AppDatabase } from '../db/database';
 import { CURATED_QUESTIONS } from './curatedQuestions';
 import { fetchOpenTdbQuestions } from './openTdbService';
@@ -231,7 +231,8 @@ export async function importPack(
 
   const validQuestions = data.questions.filter((q) => {
     return (
-      q.category &&
+      q && typeof q === 'object' &&
+      Object.hasOwn(CATEGORIES, q.category) &&
       typeof q.question === 'string' &&
       q.question.trim().length > 0 &&
       typeof q.correctAnswer === 'string' &&

@@ -57,7 +57,7 @@ cd client && bun run dev
 # 3. Open browser at http://localhost:5173
 ```
 
-Create an account with a unique username, email, and password (minimum 8 characters). Find a player in the dashboard, select question packs, and send an invitation; the recipient must accept before the match starts. Sign-in persists across games, and match history is tied to the account. Email verification and password recovery are not available.
+Create an account with a unique username, email, and password (minimum 8 characters). Registration returns `400` for invalid input, `409` for an existing email/username, and `500` for unexpected server or database failures. Find a player in the dashboard, select question packs, and send an invitation; the recipient must accept before the match starts. Sign-in persists across games, and match history is tied to the account. Email verification and password recovery are not available.
 
 ---
 
@@ -66,7 +66,7 @@ Create an account with a unique username, email, and password (minimum 8 charact
 ```bash
 bun test
 ```
-Runs engine rules, account/session and invitation boundaries, pack import/export, and OpenTDB decoding.
+Runs engine rules (including concurrent duplicate-answer protection), account/session and game-membership authorization boundaries, invitation transitions, valid pack import/export, and OpenTDB decoding.
 
 ---
 
@@ -77,7 +77,7 @@ Runs engine rules, account/session and invitation boundaries, pack import/export
 # Create D1 database
 npx wrangler d1 create triviaclash-db
 
-# Apply the account and invitation migration to an existing D1 database
+# Apply all pending account, invitation, and answer-integrity migrations to D1
 npx wrangler d1 migrations apply triviaclash-db --remote
 
 # Deploy Worker

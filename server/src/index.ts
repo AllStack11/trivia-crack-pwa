@@ -18,7 +18,7 @@ import {
   resignGame,
   spinWheel
 } from './services/gameEngine';
-import { getSession, listPlayers, login, logout, register } from './services/authService';
+import { getSession, listPlayers, login, logout, register, RegistrationError } from './services/authService';
 import { isGameParticipant, listInvitations, listMatches, respondToInvitation, sendInvitation } from './services/invitationService';
 import {
   createPack,
@@ -66,7 +66,9 @@ app.post('/api/auth/register', async (c) => {
     const body = await c.req.json();
     return c.json(await register(await getDatabase(c.env), body), 201);
   } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Registration failed' }, 400);
+    if (error instanceof RegistrationError) return c.json({ error: error.message }, error.status);
+    if (error instanceof SyntaxError) return c.json({ error: 'Invalid JSON body' }, 400);
+    return c.json({ error: 'Registration failed' }, 500);
   }
 });
 

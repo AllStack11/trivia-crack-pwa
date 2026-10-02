@@ -1,8 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { ActiveQuestionSync, QuestionResult } from '../../../shared/src/index';
+import { motion, AnimatePresence } from 'motion/react';
+import type { ActiveQuestionSync, Category, QuestionResult } from '../../../shared/src/index';
 import { CATEGORIES } from '../../../shared/src/index';
 import { playCorrectChime, playIncorrectBuzzer, playButtonPop } from '../utils/audio';
 import confetti from 'canvas-confetti';
+import CategoryCharacter, { type CharacterMood } from './characters/CategoryCharacter';
+import { CHARACTER_PROFILES } from './characters/characterData';
+import Card from './ui/Card';
+import Button from './ui/Button';
 
 interface QuestionViewProps {
   question: ActiveQuestionSync;
@@ -28,6 +33,7 @@ export default function QuestionView({
   const startTimeRef = useRef<number>(question.startedAt || Date.now());
 
   const categoryInfo = CATEGORIES[question.category] || CATEGORIES.ART;
+  const characterProfile = CHARACTER_PROFILES[question.category as Category] || CHARACTER_PROFILES.ART;
   const totalDuration = question.durationMs || 20000;
 
   // Handle timer countdown
@@ -63,7 +69,7 @@ export default function QuestionView({
     return () => clearInterval(interval);
   }, [question, isMyTurn, onAnswer, totalDuration, lastResult]);
 
-  // Trigger celebration sounds / confetti / haptics when result arrives
+  // Audio / confetti effects on answer result
   useEffect(() => {
     if (lastResult) {
       if (lastResult.wasCorrect) {
@@ -101,75 +107,73 @@ export default function QuestionView({
   const secondsRemaining = Math.ceil(timeLeftMs / 1000);
   const timerPercentage = Math.max(0, Math.min(100, (timeLeftMs / totalDuration) * 100));
 
+  // Determine Character Host Mood dynamically
+  let hostMood: CharacterMood = 'thinking';
+  if (lastResult) {
+    hostMood = lastResult.wasCorrect ? 'celebrating' : 'defeated';
+  } else if (secondsRemaining <= 5) {
+    hostMood = 'worried';
+  } else if (secondsRemaining <= 12) {
+    hostMood = 'thinking';
+  } else {
+    hostMood = 'idle';
+  }
+
   // Determine timer bar color
-  let timerBarColor = 'bg-emerald-500';
+  let timerBarColor = 'bg-gradient-to-r from-emerald-400 to-teal-500';
   if (secondsRemaining <= 5) {
-    timerBarColor = 'bg-red-500 animate-pulse';
+    timerBarColor = 'bg-gradient-to-r from-rose-500 to-red-600 animate-pulse';
   } else if (secondsRemaining <= 10) {
-    timerBarColor = 'bg-amber-400';
+    timerBarColor = 'bg-gradient-to-r from-amber-400 to-yellow-500';
   }
 
   const optionLetters = ['A', 'B', 'C', 'D'];
 
   return (
-    <div className="flex flex-col w-full max-w-md mx-auto bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-scale-up">
-      {/* Top Category Banner */}
+    <Card
+      variant="glass"
+      className="flex flex-col w-full max-w-md mx-auto p-0 overflow-hidden shadow-2xl relative z-20 border border-slate-700/80"
+    >
+      {/* Top Category Character Host Banner */}
       <div
-        className="relative px-3.5 py-2.5 sm:px-4 sm:py-3 text-white flex items-center justify-between shadow-md"
-        style={{ backgroundColor: categoryInfo.color }}
+        className="relative px-3.5 py-3 sm:px-4 sm:py-3.5 text-white flex items-center justify-between shadow-md"
+        style={{
+          background: `linear-gradient(135deg, ${categoryInfo.color}EE, ${categoryInfo.accentColor}EE)`
+        }}
       >
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-lg sm:text-xl font-bold shadow-inner shrink-0">
-            {question.category === 'ART' && '🎨'}
-            {question.category === 'SCIENCE' && '🔬'}
-            {question.category === 'SPORTS' && '🏆'}
-            {question.category === 'ENTERTAINMENT' && '🎬'}
-            {question.category === 'GEOGRAPHY' && '🌍'}
-            {question.category === 'HISTORY' && '⏳'}
-          </div>
+        <div className="flex items-center gap-3">
+          {/* Animated Category Host Avatar */}
+          <CategoryCharacter
+            category={question.category}
+            size="sm"
+            mood={hostMood}
+            showCrown={Boolean(question.isCrown)}
+            className="shrink-0 drop-shadow-md"
+          />
           <div>
-            <div className="text-[10px] sm:text-xs uppercase font-black tracking-wider text-white/80">
-              {categoryInfo.name}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] uppercase font-black tracking-widest text-white/90">
+                {categoryInfo.name}
+              </span>
+              {question.isCrown && (
+                <span className="px-1.5 py-0.2 rounded-full bg-yellow-400 text-slate-950 text-[9px] font-black tracking-wide shadow">
+                  👑 {question.isSteal ? 'STEAL DUEL' : 'CROWN MATCH'}
+                </span>
+              )}
             </div>
-            <div className="text-xs sm:text-sm font-bold text-white leading-tight">
-              {categoryInfo.characterName} — {categoryInfo.characterTitle}
+            <div className="text-xs sm:text-sm font-black text-white leading-tight">
+              {characterProfile.name} · {characterProfile.title}
             </div>
           </div>
         </div>
 
-        {/* Crown Badge if this is a Crown Match */}
-        {question.isCrown && (
-          <div className="flex items-center gap-1 bg-yellow-400 text-slate-950 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-black tracking-wide shadow-md animate-bounce-short">
-            <span>👑</span>
-            <span>{question.isSteal ? 'STEAL' : 'CROWN'}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Countdown Timer Bar */}
-      <div className="w-full bg-slate-800 h-1.5 sm:h-2 relative overflow-hidden">
-        <div
-          className={`h-full transition-all duration-100 ease-linear ${timerBarColor}`}
-          style={{ width: `${lastResult ? 0 : timerPercentage}%` }}
-        />
-      </div>
-
-      {/* Timer Digits and Turn Indicator */}
-      <div className="flex items-center justify-between px-3.5 pt-2 text-[11px] sm:text-xs font-medium text-slate-400">
-        <div>
-          {lastResult ? (
-            <span className="text-slate-300 font-bold">Answer Evaluated</span>
-          ) : isMyTurn ? (
-            <span className="text-indigo-400 font-bold">Your turn to answer!</span>
-          ) : (
-            <span className="text-slate-400">Opponent is answering...</span>
-          )}
-        </div>
+        {/* Live Timer Clock Badge */}
         {!lastResult && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/20">
+            <span className="text-xs animate-spin-slow">⏱️</span>
             <span
-              className={`font-mono font-bold text-xs sm:text-sm ${
-                secondsRemaining <= 5 ? 'text-red-400 animate-pulse' : 'text-slate-300'
+              className={`font-mono font-black text-xs sm:text-sm ${
+                secondsRemaining <= 5 ? 'text-red-300 animate-pulse' : 'text-white'
               }`}
             >
               {secondsRemaining}s
@@ -178,18 +182,27 @@ export default function QuestionView({
         )}
       </div>
 
-      {/* Question Card Content */}
-      <div className="px-3.5 py-2.5 sm:px-4 sm:py-3 flex-1 flex flex-col justify-center">
-        {/* Optional Visual Image Container */}
+      {/* Countdown Progress Line */}
+      <div className="w-full bg-slate-950 h-2 relative overflow-hidden">
+        <motion.div
+          className={`h-full ${timerBarColor} shadow-sm`}
+          style={{ width: `${lastResult ? 0 : timerPercentage}%` }}
+          transition={{ duration: 0.1, ease: 'linear' }}
+        />
+      </div>
+
+      {/* Question Body */}
+      <div className="p-4 sm:p-5 flex-1 flex flex-col justify-center">
+        {/* Optional Question Image */}
         {question.imageUrl && !imageError && (
-          <div className="relative mb-2.5 flex flex-col items-center">
+          <div className="relative mb-3 flex flex-col items-center">
             <div
               onClick={() => setIsImageLightboxOpen(true)}
-              className="relative w-full max-h-32 sm:max-h-40 rounded-2xl overflow-hidden bg-slate-800/80 border border-slate-700/60 flex items-center justify-center cursor-pointer group hover:border-indigo-400 transition-all shadow-inner"
+              className="relative w-full max-h-36 sm:max-h-44 rounded-2xl overflow-hidden bg-slate-950/80 border border-slate-700/60 flex items-center justify-center cursor-pointer group hover:border-indigo-400 transition-all shadow-inner"
             >
               {!imageLoaded && (
-                <div className="absolute inset-0 bg-slate-800 animate-pulse flex items-center justify-center text-xs text-slate-500">
-                  Loading visual clue...
+                <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center text-xs text-slate-500">
+                  Loading clue…
                 </div>
               )}
               <img
@@ -197,150 +210,163 @@ export default function QuestionView({
                 alt="Trivia Clue"
                 onLoad={() => setImageLoaded(true)}
                 onError={() => setImageError(true)}
-                className={`max-h-32 sm:max-h-40 w-auto object-contain transition-transform duration-200 group-hover:scale-105 ${
+                className={`max-h-36 sm:max-h-44 w-auto object-contain transition-transform duration-300 group-hover:scale-105 ${
                   imageLoaded ? 'opacity-100' : 'opacity-0'
                 }`}
               />
-              <div className="absolute bottom-1.5 right-1.5 bg-slate-950/70 backdrop-blur-md px-1.5 py-0.5 rounded-md text-[9px] font-semibold text-slate-300 flex items-center gap-1 shadow">
-                <span>🔍</span>
-                <span>Zoom</span>
+              <div className="absolute bottom-2 right-2 bg-slate-950/80 backdrop-blur-md px-2 py-0.5 rounded-lg text-[9px] font-bold text-slate-200 flex items-center gap-1 shadow">
+                <span>🔍 Zoom</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* Question Text Prompt */}
-        <h2 className="text-sm sm:text-base font-bold text-center text-white leading-snug px-1 mb-3">
+        {/* Question Text */}
+        <h2 className="text-sm sm:text-base font-black text-center text-white leading-relaxed mb-4 px-1">
           {question.question}
         </h2>
 
-        {/* 4 Answer Choice Buttons */}
-        <div className="grid grid-cols-1 gap-2 w-full">
-          {question.options.map((option, idx) => {
+        {/* 4 Interactive Option Cards */}
+        <div className="grid grid-cols-1 gap-2.5 w-full">
+          {question.options.map((option: string, idx: number) => {
             const letter = optionLetters[idx];
             const isSelected = selectedIndex === idx;
 
-            let buttonStyle = 'bg-slate-800/90 text-slate-200 border-slate-700/80';
-            let badgeStyle = 'bg-slate-700 text-slate-300';
+            let cardStyles = 'bg-slate-800/80 text-slate-200 border-slate-700/70 hover:border-slate-500';
+            let badgeStyles = 'bg-slate-700 text-slate-200';
 
-            // Post-answer results highlighting: VERY PROMINENT
             if (lastResult) {
               const isCorrectOption = idx === lastResult.correctIndex;
               if (isCorrectOption) {
-                // Correct answer is always glowing green!
-                buttonStyle =
-                  'bg-emerald-600 text-white border-emerald-300 shadow-lg shadow-emerald-500/40 ring-2 ring-emerald-400 transform scale-[1.01]';
-                badgeStyle = 'bg-emerald-300 text-slate-950 font-black';
+                cardStyles = 'bg-emerald-600 text-white border-emerald-300 ring-2 ring-emerald-400 shadow-xl shadow-emerald-500/30 scale-[1.01]';
+                badgeStyles = 'bg-emerald-300 text-slate-950 font-black';
               } else if (isSelected && !lastResult.wasCorrect) {
-                // Picked wrong option is glowing red!
-                buttonStyle =
-                  'bg-rose-700/90 text-white border-rose-400 shadow-lg shadow-rose-900/50 ring-2 ring-rose-400';
-                badgeStyle = 'bg-rose-300 text-slate-950 font-black';
+                cardStyles = 'bg-rose-700/90 text-white border-rose-400 ring-2 ring-rose-400 shadow-xl shadow-rose-900/40';
+                badgeStyles = 'bg-rose-300 text-slate-950 font-black';
               } else {
-                buttonStyle = 'bg-slate-900/50 text-slate-500 border-slate-800/60 opacity-50';
-                badgeStyle = 'bg-slate-850 text-slate-600';
+                cardStyles = 'bg-slate-950/40 text-slate-500 border-slate-800/60 opacity-40';
+                badgeStyles = 'bg-slate-850 text-slate-600';
               }
             } else if (isSelected) {
-              buttonStyle = 'bg-indigo-600 text-white border-indigo-400 shadow-md ring-2 ring-indigo-400';
-              badgeStyle = 'bg-indigo-300 text-slate-950 font-black';
-            } else if (isMyTurn && !hasAnsweredRef.current) {
-              buttonStyle = 'bg-slate-800 hover:bg-slate-750 text-slate-200 border-slate-700/80 active:scale-[0.98]';
+              cardStyles = 'bg-indigo-600 text-white border-indigo-300 ring-2 ring-indigo-400 shadow-lg shadow-indigo-600/30';
+              badgeStyles = 'bg-indigo-200 text-slate-950 font-black';
             }
 
             return (
-              <button
+              <motion.button
                 key={idx}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, delay: idx * 0.05 }}
+                whileHover={!hasAnsweredRef.current && isMyTurn && !lastResult ? { scale: 1.01, x: 2 } : undefined}
+                whileTap={!hasAnsweredRef.current && isMyTurn && !lastResult ? { scale: 0.98 } : undefined}
                 disabled={!isMyTurn || hasAnsweredRef.current || lastResult !== undefined}
                 onClick={() => handleSelectOption(idx)}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left font-medium text-xs sm:text-sm transition-all duration-200 ${buttonStyle}`}
+                className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl border text-left font-bold text-xs sm:text-sm transition-all duration-150 relative ${cardStyles}`}
               >
                 <div
-                  className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${badgeStyle}`}
+                  className={`w-7 h-7 rounded-xl flex items-center justify-center font-black text-xs shrink-0 shadow-inner ${badgeStyles}`}
                 >
                   {letter}
                 </div>
                 <span className="flex-1 leading-snug">{option}</span>
                 {lastResult && idx === lastResult.correctIndex && (
-                  <span className="text-white font-extrabold text-sm sm:text-base animate-bounce">✓</span>
+                  <span className="text-white font-black text-base animate-bounce">✓</span>
                 )}
                 {lastResult && isSelected && !lastResult.wasCorrect && (
-                  <span className="text-white font-extrabold text-sm sm:text-base">✗</span>
+                  <span className="text-white font-black text-base">✗</span>
                 )}
-              </button>
+              </motion.button>
             );
           })}
         </div>
 
-        {/* HIGH-IMPACT RESULT FEEDBACK OVERLAY BANNER */}
-        {lastResult && (
-          <div
-            className={`mt-3 p-3 rounded-2xl border text-center transition-all animate-scale-up ${
-              lastResult.wasCorrect
-                ? 'bg-emerald-950/95 border-emerald-500 shadow-xl shadow-emerald-950/50 text-emerald-200'
-                : 'bg-rose-950/95 border-rose-500 shadow-xl shadow-rose-950/50 text-rose-200'
-            }`}
-          >
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <span className="text-xl sm:text-2xl leading-none">
-                {lastResult.wasCorrect ? '🎉' : '❌'}
-              </span>
-              <span className="text-base sm:text-lg font-black uppercase tracking-wide">
-                {lastResult.wasCorrect ? 'CORRECT!' : 'INCORRECT!'}
-              </span>
-            </div>
-
-            {lastResult.wasCorrect ? (
-              <div className="space-y-0.5">
-                <p className="text-xs sm:text-sm font-extrabold text-emerald-300">
-                  {lastResult.awardedCrown
-                    ? `👑 Crown Awarded! You unlocked ${lastResult.awardedCrown}!`
-                    : lastResult.stolenCrown
-                    ? `⚔️ Crown Captured! You stole ${lastResult.stolenCrown}!`
-                    : '⚡ +1 Point to Crown Gauge!'}
-                </p>
-                <p className="text-[10px] sm:text-xs text-emerald-400/90 font-medium">
-                  {lastResult.turnContinued ? 'You retain your turn — prepare to spin again!' : 'Great job!'}
-                </p>
+        {/* High Impact Result Announcement */}
+        <AnimatePresence>
+          {lastResult && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={`mt-4 p-4 rounded-3xl border text-center shadow-2xl backdrop-blur-xl relative overflow-hidden ${
+                lastResult.wasCorrect
+                  ? 'bg-emerald-950/95 border-emerald-400/80 shadow-emerald-500/20 text-emerald-100'
+                  : 'bg-rose-950/95 border-rose-400/80 shadow-rose-500/20 text-rose-100'
+              }`}
+            >
+              {/* Host Reaction Quote */}
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <CategoryCharacter
+                  category={question.category}
+                  size="sm"
+                  mood={lastResult.wasCorrect ? 'celebrating' : 'defeated'}
+                />
+                <div className="text-left min-w-0">
+                  <div className="text-xs font-black uppercase tracking-wider">
+                    {lastResult.wasCorrect ? '🎉 Correct!' : '❌ Incorrect!'}
+                  </div>
+                  <div className="text-[11px] italic font-medium opacity-90 truncate max-w-[220px]">
+                    "{lastResult.wasCorrect ? characterProfile.quotes.correct : characterProfile.quotes.incorrect}"
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-0.5">
-                <p className="text-xs sm:text-sm font-semibold text-rose-300">
-                  Correct answer was:{' '}
-                  <span className="text-white font-black underline decoration-emerald-400">
-                    {lastResult.correctAnswer}
-                  </span>
-                </p>
-                <p className="text-[10px] sm:text-xs text-rose-400 font-medium">
-                  {lastResult.lostCrown
-                    ? `💔 Steal failed! You forfeited your ${lastResult.lostCrown} crown!`
-                    : 'Turn passes to opponent...'}
-                </p>
-              </div>
-            )}
 
-            {/* Quick Continue Button */}
-            {onDismissResult && (
-              <button
-                onClick={onDismissResult}
-                className="mt-2.5 px-4 py-1.5 bg-white text-slate-950 font-black text-xs rounded-full shadow hover:bg-slate-200 transition transform active:scale-95"
-              >
-                Continue ➔
-              </button>
-            )}
-          </div>
-        )}
+              {/* Status Outcome */}
+              {lastResult.wasCorrect ? (
+                <div className="space-y-1">
+                  <p className="text-xs sm:text-sm font-black text-emerald-300">
+                    {lastResult.awardedCrown
+                      ? `👑 Crown Awarded! You unlocked ${lastResult.awardedCrown}!`
+                      : lastResult.stolenCrown
+                      ? `⚔️ Crown Captured! You seized ${lastResult.stolenCrown}!`
+                      : '⚡ +1 Point added to Crown Gauge!'}
+                  </p>
+                  <p className="text-[11px] text-emerald-400/90 font-medium">
+                    {lastResult.turnContinued ? 'Turn retained — spin again!' : 'Outstanding knowledge!'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-rose-200">
+                    Correct answer was:{' '}
+                    <span className="text-white font-black underline decoration-emerald-400">
+                      {lastResult.correctAnswer}
+                    </span>
+                  </p>
+                  <p className="text-[11px] text-rose-300/90 font-medium">
+                    {lastResult.lostCrown
+                      ? `💔 Steal failed! Forfeited your ${lastResult.lostCrown} crown!`
+                      : 'Turn passes to opponent…'}
+                  </p>
+                </div>
+              )}
+
+              {/* Continue button */}
+              {onDismissResult && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={onDismissResult}
+                  className="mt-3 px-5 py-2 font-black text-xs"
+                >
+                  Continue ➔
+                </Button>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Full Resolution Image Lightbox Modal */}
+      {/* Full Image Lightbox Modal */}
       {isImageLightboxOpen && question.imageUrl && (
         <div
           onClick={() => setIsImageLightboxOpen(false)}
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-fade-in"
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 cursor-pointer"
         >
           <div className="relative max-w-lg w-full flex flex-col items-center">
             <button
               onClick={() => setIsImageLightboxOpen(false)}
-              className="absolute -top-12 right-0 bg-slate-800 text-white rounded-full p-2 hover:bg-slate-700 text-xs font-bold shadow"
+              className="absolute -top-12 right-0 bg-slate-800 text-white rounded-full px-3 py-1 text-xs font-bold shadow"
             >
               ✕ Close
             </button>
@@ -349,12 +375,12 @@ export default function QuestionView({
               alt="Clue Enlarged"
               className="max-h-[75vh] w-auto object-contain rounded-2xl border border-slate-700 shadow-2xl"
             />
-            <p className="mt-3 text-[10px] text-slate-400 text-center">
-              Tap anywhere outside to close • Timer continues
+            <p className="mt-3 text-xs text-slate-400 text-center">
+              Tap anywhere to return • Timer continues
             </p>
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

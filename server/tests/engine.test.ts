@@ -203,6 +203,46 @@ describe('Game Engine State Machine', () => {
     expect(state?.mode).toBe('SPIN');
   });
 
+  test('a question can be submitted only once when duplicate answers race', async () => {
+    const { gameId } = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    const questionId = 'race_question';
+    const stored = {
+      questionData: {
+        id: questionId,
+        packId: 'default',
+        category: 'SCIENCE' as Category,
+        question: 'Which planet is known as the Red Planet?',
+        correctAnswer: 'Mars',
+        incorrectAnswers: ['Venus', 'Jupiter', 'Mercury'],
+        difficulty: 'easy' as const
+      },
+      shuffledOptions: ['Venus', 'Mars', 'Jupiter', 'Mercury'],
+      correctIndex: 1,
+      startedAt: Date.now(),
+      durationMs: 20000,
+      isCrown: false
+    };
+    await db.execute(
+      `UPDATE games SET active_mode = 'QUESTION', active_question_json = ? WHERE id = ?`,
+      [JSON.stringify(stored), gameId]
+    );
+
+    const submissions = await Promise.allSettled([
+      answerQuestion(db, gameId, PLAYER_ONE, questionId, 1, 4000),
+      answerQuestion(db, gameId, PLAYER_ONE, questionId, 1, 4000)
+    ]);
+    const state = await getGameStateSync(db, gameId);
+    const answers = await db.query<{ count: number }>(
+      'SELECT COUNT(*) as count FROM game_answers WHERE game_id = ? AND question_id = ?',
+      [gameId, questionId]
+    );
+
+    expect(submissions.filter((submission) => submission.status === 'fulfilled')).toHaveLength(1);
+    expect(submissions.filter((submission) => submission.status === 'rejected')).toHaveLength(1);
+    expect(answers[0]?.count).toBe(1);
+    expect(state?.players.p1.crownGauge).toBe(1);
+  });
+
   test('Steal Challenge: challenger steals crown on correct answer', async () => {
     const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
 

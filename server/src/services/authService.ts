@@ -1,9 +1,16 @@
 import type { AccountSummary, AuthResponse, RegisterRequest } from '../../../shared/src/index';
 import type { AppDatabase } from '../db/database';
-
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PBKDF2_ITERATIONS = 210_000;
 const encoder = new TextEncoder();
+
+export class RegistrationError extends Error {
+  constructor(message: string, readonly status: 400 | 409) {
+    super(message);
+    this.name = 'RegistrationError';
+  }
+}
+
 
 interface AccountRow {
   user_id: string;
@@ -67,12 +74,13 @@ async function createSession(db: AppDatabase, userId: string, now = Date.now()):
 }
 
 export async function register(db: AppDatabase, input: RegisterRequest): Promise<AuthResponse> {
-  const username = typeof input.username === 'string' ? input.username.trim() : '';
-  const email = typeof input.email === 'string' ? input.email.trim() : '';
-  const password = typeof input.password === 'string' ? input.password : '';
-  if (!username || username.length > 24) throw new Error('Username must be 1–24 characters');
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Enter a valid email address');
-  if (password.length < 8) throw new Error('Password must be at least 8 characters');
+  const request = input && typeof input === 'object' ? input : ({} as RegisterRequest);
+  const username = typeof request.username === 'string' ? request.username.trim() : '';
+  const email = typeof request.email === 'string' ? request.email.trim() : '';
+  const password = typeof request.password === 'string' ? request.password : '';
+  if (!username || username.length > 24) throw new RegistrationError('Username must be 1–24 characters', 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new RegistrationError('Enter a valid email address', 400);
+  if (password.length < 8) throw new RegistrationError('Password must be at least 8 characters', 400);
   const normalizedEmail = email.toLowerCase();
   const normalizedUsername = username.toLowerCase();
   const id = `account_${crypto.randomUUID()}`;
@@ -85,9 +93,9 @@ export async function register(db: AppDatabase, input: RegisterRequest): Promise
     ]);
   } catch (error) {
     const existingEmail = await db.queryFirst('SELECT user_id FROM accounts WHERE normalized_email = ?', [normalizedEmail]);
-    if (existingEmail) throw new Error('An account with that email already exists');
+    if (existingEmail) throw new RegistrationError('An account with that email already exists', 409);
     const existingUsername = await db.queryFirst('SELECT user_id FROM accounts WHERE normalized_username = ?', [normalizedUsername]);
-    if (existingUsername) throw new Error('That username is already taken');
+    if (existingUsername) throw new RegistrationError('That username is already taken', 409);
     throw error;
   }
   return { account: { id, username }, token: await createSession(db, id, now) };
