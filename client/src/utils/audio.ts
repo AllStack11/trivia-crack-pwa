@@ -1,3 +1,7 @@
+import { triggerHaptic } from '../hooks/usePWA';
+
+export { triggerHaptic };
+
 let audioCtx: AudioContext | null = null;
 let isMuted = false;
 
@@ -43,10 +47,10 @@ export function setAudioMuted(muted: boolean): void {
  * Wheel peg tick sound
  */
 export function playWheelTick(pitchOffset: number = 0): void {
+  triggerHaptic('light');
   if (isMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -69,10 +73,10 @@ export function playWheelTick(pitchOffset: number = 0): void {
  * Button tap sound
  */
 export function playButtonPop(): void {
+  triggerHaptic('selection');
   if (isMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -95,10 +99,10 @@ export function playButtonPop(): void {
  * Correct answer celebratory chime (C5 -> E5 -> G5 -> C6)
  */
 export function playCorrectChime(): void {
+  triggerHaptic('success');
   if (isMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-
   const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
   const start = ctx.currentTime;
 
@@ -125,10 +129,10 @@ export function playCorrectChime(): void {
  * Incorrect answer buzzer
  */
 export function playIncorrectBuzzer(): void {
+  triggerHaptic('error');
   if (isMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-
   const start = ctx.currentTime;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -151,10 +155,10 @@ export function playIncorrectBuzzer(): void {
  * Crown achievement & victory fanfare
  */
 export function playFanfare(): void {
+  triggerHaptic('heavy');
   if (isMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-
   const start = ctx.currentTime;
   // Brassy triumph: G4, C5, E5, G5 sustained chord
   const chord = [392.0, 523.25, 659.25, 783.99];

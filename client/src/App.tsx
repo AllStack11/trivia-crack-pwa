@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import type {
   ActiveQuestionSync,
   QuestionResult,
-  WheelSlice
+  WheelSlice,
 } from '../../shared/src/index';
 import { CATEGORIES } from '../../shared/src/index';
 import CrownBar from './components/CrownBar';
@@ -15,32 +15,36 @@ import Wheel from './components/Wheel';
 import { useGameSync } from './hooks/useGameSync';
 import type { AccountSession } from './components/Lobby';
 import { apiUrl } from './utils/api';
-import { playFanfare, playCorrectChime, isAudioMuted, setAudioMuted, playButtonPop } from './utils/audio';
+import {
+  playFanfare,
+  playCorrectChime,
+  isAudioMuted,
+  setAudioMuted,
+  playButtonPop,
+} from './utils/audio';
 import confetti from 'canvas-confetti';
-import { Ssgoi, type SsgoiConfig } from '@ssgoi/react';
-import { drill, sheet, fade } from '@ssgoi/react/view-transitions';
 import AnimatedBackground from './components/ui/AnimatedBackground';
 import Button from './components/ui/Button';
 import Card from './components/ui/Card';
+import AppHeader from './components/navigation/AppHeader';
+import OfflineBanner from './components/ui/OfflineBanner';
+import PWAInstallBanner from './components/ui/PWAInstallBanner';
+import IOSInstallSheet from './components/ui/IOSInstallSheet';
+import { ToastProvider, useToast } from './components/ui/Toast';
+import { usePWA } from './hooks/usePWA';
 
 type AppView = 'LOBBY' | 'PACK_CREATOR' | 'GAME';
 
-const ssgoiConfig: SsgoiConfig = {
-  transitions: [
-    { from: '/', to: '/packs', transition: sheet({ type: 'blur' }) },
-    { from: '/packs', to: '/', transition: sheet({ type: 'blur' }) },
-    { from: '/', to: '/game/*', transition: drill({ type: 'parallax' }) },
-    { from: '/game/*', to: '/', transition: drill({ type: 'parallax' }) },
-    { on: '/**', transition: fade() }
-  ]
-};
+function AppContent() {
+  const { showToast, showConfirm } = useToast();
+  const pwa = usePWA();
 
-export default function App() {
   const [view, setView] = useState<AppView>('LOBBY');
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
   const [account, setAccount] = useState<AccountSession | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [muted, setMuted] = useState<boolean>(isAudioMuted());
+  const [showIOSSheet, setShowIOSSheet] = useState<boolean>(false);
 
   // Wheel animation control state to prevent skipping the spinner
   const [isWheelSpinning, setIsWheelSpinning] = useState<boolean>(false);
@@ -55,7 +59,7 @@ export default function App() {
   } | null>(null);
   const resultReviewTimerRef = useRef<number | undefined>(undefined);
 
-  // Restore credentials only after the server confirms the account session.
+  // Restore credentials only after the server confirms the account session
   useEffect(() => {
     let mounted = true;
     const restore = async () => {
@@ -65,14 +69,18 @@ export default function App() {
           const saved = JSON.parse(raw) as AccountSession;
           if (saved.id && saved.username && saved.token) {
             const response = await fetch(apiUrl('/api/me'), {
-              headers: { Authorization: `Bearer ${saved.token}` }
+              headers: { Authorization: `Bearer ${saved.token}` },
             });
             if (response.ok) {
-              const data = (await response.json()) as { account: { id: string; username: string } };
+              const data = (await response.json()) as {
+                account: { id: string; username: string };
+              };
               if (mounted) {
                 setAccount({ ...data.account, token: saved.token });
                 if (window.location.pathname.startsWith('/game/')) {
-                  setActiveGameId(decodeURIComponent(window.location.pathname.slice('/game/'.length)));
+                  setActiveGameId(
+                    decodeURIComponent(window.location.pathname.slice('/game/'.length))
+                  );
                   setView('GAME');
                 } else if (window.location.pathname === '/packs') setView('PACK_CREATOR');
               }
@@ -110,7 +118,7 @@ export default function App() {
       try {
         await fetch(apiUrl('/api/auth/logout'), {
           method: 'POST',
-          headers: { Authorization: `Bearer ${account.token}` }
+          headers: { Authorization: `Bearer ${account.token}` },
         });
       } catch {
         /* Local credentials are cleared even when network is unavailable. */
@@ -121,7 +129,8 @@ export default function App() {
     setView('LOBBY');
     localStorage.removeItem('trivia_clash_account');
     window.history.pushState(null, '', '/');
-  }, [account]);
+    showToast('Signed out', 'info');
+  }, [account, showToast]);
 
   const handleUnauthorized = useCallback(() => {
     setAccount(null);
@@ -129,7 +138,8 @@ export default function App() {
     setView('LOBBY');
     localStorage.removeItem('trivia_clash_account');
     window.history.replaceState(null, '', '/');
-  }, []);
+    showToast('Session expired. Please sign in again.', 'error');
+  }, [showToast]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -160,12 +170,12 @@ export default function App() {
     spin,
     answer,
     chooseCrown,
-    resign
+    resign,
   } = useGameSync({
     gameId: activeGameId,
     accountId: account?.id ?? null,
     sessionToken: account?.token ?? null,
-    onUnauthorized: handleUnauthorized
+    onUnauthorized: handleUnauthorized,
   });
 
   // When spectator (Player 2) receives opponent's spin via SSE, trigger wheel animation
@@ -193,7 +203,7 @@ export default function App() {
     ) {
       setActiveReviewResult({
         question: gameState.activeQuestion,
-        result: gameState.lastResult
+        result: gameState.lastResult,
       });
       clearTimeout(resultReviewTimerRef.current);
       resultReviewTimerRef.current = window.setTimeout(() => {
@@ -201,6 +211,12 @@ export default function App() {
       }, 3000);
     }
   }, [gameState?.lastResult, gameState?.currentTurnPlayerId, gameState?.activeQuestion, account?.id]);
+  useEffect(() => {
+    return () => {
+      clearTimeout(resultReviewTimerRef.current);
+    };
+  }, []);
+
 
   // Handle Game Over victory sound & confetti
   useEffect(() => {
@@ -210,7 +226,7 @@ export default function App() {
         confetti({
           particleCount: 140,
           spread: 85,
-          origin: { y: 0.45 }
+          origin: { y: 0.45 },
         });
       }
     }
@@ -232,11 +248,24 @@ export default function App() {
   };
 
   const handleNavigateToLobby = () => {
-    if (
-      gameState?.status === 'IN_PROGRESS' &&
-      !confirm('Leave this game? You can resume it from your matches dashboard.')
-    )
+    if (gameState?.status === 'IN_PROGRESS') {
+      showConfirm({
+        title: 'Leave Match?',
+        message: 'You can resume this duel anytime from your duels dashboard.',
+        confirmText: 'Leave',
+        onConfirm: () => {
+          setActiveGameId(null);
+          setIsWheelSpinning(false);
+          setLandedCategoryName(null);
+          clearTimeout(resultReviewTimerRef.current);
+          setActiveReviewResult(null);
+          setView('LOBBY');
+          window.history.pushState(null, '', '/');
+        },
+      });
       return;
+    }
+
     setActiveGameId(null);
     setIsWheelSpinning(false);
     setLandedCategoryName(null);
@@ -266,14 +295,12 @@ export default function App() {
     setLandedCategoryName(catName);
     playCorrectChime();
 
-    // Celebratory pause before transitioning to Question
     setTimeout(() => {
       setIsWheelSpinning(false);
       setLandedCategoryName(null);
     }, 900);
   }, []);
 
-  // Answer question and hold result on screen for 3s to show outcome
   const handleAnswerQuestion = async (
     targetQuestion: ActiveQuestionSync,
     ansIdx: number,
@@ -283,7 +310,7 @@ export default function App() {
     if (res) {
       setActiveReviewResult({
         question: targetQuestion,
-        result: res
+        result: res,
       });
       clearTimeout(resultReviewTimerRef.current);
       resultReviewTimerRef.current = window.setTimeout(() => {
@@ -299,6 +326,30 @@ export default function App() {
     playButtonPop();
   };
 
+  const handleShareApp = async () => {
+    const shared = await pwa.shareApp({
+      title: 'Trivia Clash',
+      text: 'Challenge me to a real-time crown trivia duel on Trivia Clash!',
+    });
+    if (shared) {
+      showToast('Duel invite link copied to clipboard!', 'success');
+    }
+  };
+
+  const handleForfeit = () => {
+    showConfirm({
+      title: 'Forfeit Match?',
+      message:
+        'Are you sure you want to forfeit this duel? Your opponent will be awarded victory.',
+      confirmText: 'Forfeit',
+      isDestructive: true,
+      onConfirm: () => {
+        void resign();
+        showToast('You forfeited the match', 'info');
+      },
+    });
+  };
+
   const isMyTurn = Boolean(
     gameState && account && gameState.currentTurnPlayerId === account.id
   );
@@ -306,9 +357,7 @@ export default function App() {
   const shouldShowWheel =
     !activeReviewResult &&
     gameState?.status === 'IN_PROGRESS' &&
-    (isWheelSpinning ||
-      gameState.mode === 'SPIN' ||
-      gameState.mode === 'SPINNING');
+    (isWheelSpinning || gameState.mode === 'SPIN' || gameState.mode === 'SPINNING');
 
   const shouldShowQuestion =
     Boolean(activeReviewResult) ||
@@ -327,264 +376,314 @@ export default function App() {
     ? activeReviewResult?.question.category ?? gameState?.activeQuestion?.category ?? null
     : null;
 
+  const opponentName = gameState
+    ? gameState.players.p1.id === account?.id
+      ? gameState.players.p2?.username ?? 'Opponent'
+      : gameState.players.p1.username
+    : '';
+
   return (
-    <Ssgoi config={ssgoiConfig}>
+    <div className="h-[100dvh] max-h-[100dvh] w-full text-slate-100 flex flex-col justify-between overflow-hidden relative select-none">
       {/* Dynamic Cosmic Animated Background with Reactive Category Lighting */}
       <AnimatedBackground activeCategory={activeCategory} />
 
-      <div className="h-[100dvh] max-h-[100dvh] text-slate-100 flex flex-col justify-between p-2 sm:p-4 overflow-hidden relative z-10">
-        {/* View: Pack Creator */}
-        {view === 'PACK_CREATOR' && (
-          <main className="flex-1 flex items-center justify-center py-2 animate-scale-up z-20">
-            <PackCreator onBack={handleNavigateToLobby} />
-          </main>
-        )}
+      {/* Top App Header */}
+      <AppHeader
+        account={account}
+        onLogout={handleLogout}
+        isOnline={pwa.isOnline}
+        isInstallable={pwa.isInstallable}
+        onInstallApp={pwa.installApp}
+        onShareApp={handleShareApp}
+        muted={muted}
+        onToggleMute={toggleMute}
+        currentView={view}
+        onBackToLobby={handleNavigateToLobby}
+        title={
+          view === 'GAME'
+            ? gameState
+              ? `vs. ${opponentName}`
+              : 'Match'
+            : view === 'PACK_CREATOR'
+            ? 'Pack Studio'
+            : undefined
+        }
+      />
 
-        {/* View: Lobby */}
-        {view === 'LOBBY' && (
-          <main className="flex-1 flex items-center justify-center py-2 z-20">
-            {authLoading ? (
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-xl animate-spin">
-                  👑
+      {/* Floating Offline Notification Banner */}
+      <OfflineBanner isOnline={pwa.isOnline} />
+
+      {/* PWA Install Banner */}
+      <PWAInstallBanner
+        isInstallable={pwa.isInstallable}
+        isInstalled={pwa.isInstalled}
+        isIOS={pwa.isIOS}
+        onInstall={pwa.installApp}
+        onShowIOSGuide={() => setShowIOSSheet(true)}
+      />
+
+      {/* iOS Safari Home-Screen Guide Sheet */}
+      <IOSInstallSheet
+        isOpen={showIOSSheet}
+        onClose={() => setShowIOSSheet(false)}
+      />
+
+      {/* Main Viewport Router with Fluid Directional Transitions */}
+      <div className="flex-1 flex flex-col w-full h-full overflow-hidden relative">
+        <AnimatePresence mode="wait">
+          {view === 'PACK_CREATOR' && (
+            <motion.main
+              key="pack_creator"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 30 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+              className="flex-1 flex flex-col h-full overflow-hidden z-20"
+            >
+              <PackCreator onBack={handleNavigateToLobby} />
+            </motion.main>
+          )}
+
+          {view === 'LOBBY' && (
+            <motion.main
+              key="lobby"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+              className="flex-1 flex flex-col h-full overflow-hidden z-20"
+            >
+              {authLoading ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3">
+                  <div className="w-12 h-12 rounded-3xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-2xl animate-spin">
+                    👑
+                  </div>
+                  <div className="text-sm font-bold text-slate-300">
+                    Restoring your account…
+                  </div>
                 </div>
-                <div className="text-sm font-bold text-slate-300">Restoring your account…</div>
-              </div>
-            ) : (
-              <Lobby
-                account={account}
-                onAuth={handleAuth}
-                onLogout={handleLogout}
-                onOpenGame={handleOpenGame}
-                onOpenPackCreator={handleNavigateToPacks}
-              />
-            )}
-          </main>
-        )}
+              ) : (
+                <Lobby
+                  account={account}
+                  onAuth={handleAuth}
+                  onLogout={handleLogout}
+                  onOpenGame={handleOpenGame}
+                  onOpenPackCreator={handleNavigateToPacks}
+                />
+              )}
+            </motion.main>
+          )}
 
-        {/* View: Active Game */}
-        {view === 'GAME' && account && gameState && (
-          <div className="flex-1 flex flex-col max-w-md mx-auto w-full gap-2 sm:gap-3 h-full overflow-hidden justify-between z-20">
-            {/* Top Navigation & Status Bar */}
-            <div className="flex items-center justify-between bg-slate-900/80 backdrop-blur-xl border border-slate-700/80 rounded-2xl px-3.5 py-2 text-xs shrink-0 shadow-lg">
-              <div className="flex items-center gap-2.5">
-                <button
-                  onClick={handleNavigateToLobby}
-                  className="text-slate-300 hover:text-white font-extrabold flex items-center gap-1 transition"
-                >
-                  <span>←</span>
-                  <span>Lobby</span>
-                </button>
-                <span className="text-slate-700">|</span>
-                <span className="font-extrabold text-amber-300 truncate max-w-[160px]">
-                  vs.{' '}
-                  {gameState.players.p1.id === account.id
-                    ? gameState.players.p2?.username ?? 'Waiting…'
-                    : gameState.players.p1.username}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2.5">
-                {/* Audio quick toggle */}
-                <button
-                  onClick={toggleMute}
-                  className="text-xs p-1 rounded-lg hover:bg-slate-800 transition"
-                  title={muted ? 'Unmute Audio' : 'Mute Audio'}
-                >
-                  {muted ? '🔇' : '🔊'}
-                </button>
-
-                {/* Connection Status */}
-                <div
-                  className="flex items-center gap-1.5 bg-slate-950/60 px-2 py-0.5 rounded-full border border-slate-800"
-                  title={isConnected ? 'Realtime Match Active' : 'Connecting to match…'}
-                >
+          {view === 'GAME' && account && gameState && (
+            <motion.main
+              key="game"
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 40 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+              className="flex-1 flex flex-col max-w-md mx-auto w-full h-full overflow-hidden justify-between z-20 px-3 py-1"
+            >
+              {/* Connection Status indicator */}
+              <div className="flex items-center justify-between px-2 py-1">
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
                   <span
-                    className={`w-1.5 h-1.5 rounded-full ${
+                    className={`w-2 h-2 rounded-full ${
                       isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
                     }`}
                   />
-                  <span className="text-[9px] font-black text-slate-300 uppercase tracking-wider">
-                    {isConnected ? 'LIVE' : 'SYNC'}
+                  <span className="text-[11px] font-bold">
+                    {isConnected ? 'Realtime Match' : 'Reconnecting...'}
                   </span>
                 </div>
+                {gameState.status === 'IN_PROGRESS' && (
+                  <button
+                    type="button"
+                    onClick={handleForfeit}
+                    className="text-[11px] font-bold text-slate-400 hover:text-rose-400 transition-colors"
+                  >
+                    Forfeit Match 🏳️
+                  </button>
+                )}
               </div>
-            </div>
 
-            {gameError && (
-              <div
-                role="alert"
-                className="p-2.5 bg-red-950/70 border border-red-800 rounded-2xl text-xs text-red-200 text-center font-bold"
-              >
-                {gameError}
-              </div>
-            )}
+              {gameError && (
+                <div
+                  role="alert"
+                  className="p-2.5 bg-red-950/70 border border-red-800 rounded-2xl text-xs text-red-200 text-center font-bold"
+                >
+                  {gameError}
+                </div>
+              )}
 
-            {/* Players Crown Status Bar */}
-            <CrownBar state={gameState} myPlayerId={account.id} />
+              {/* Players Crown Status Bar */}
+              <CrownBar state={gameState} myPlayerId={account.id} />
 
-            {/* Center Stage Area */}
-            <div className="flex-1 min-h-0 flex flex-col justify-center items-center py-0.5 overflow-y-auto w-full">
-              {/* STAGE: WHEEL */}
-              {shouldShowWheel && (
-                <div className="w-full flex flex-col items-center justify-center relative">
-                  <Wheel
-                    canSpin={isMyTurn && !isWheelSpinning}
-                    isSpinning={isWheelSpinning}
-                    targetDegrees={wheelTargetDegrees || targetDegrees}
-                    onSpinStart={handleSpinStart}
-                    onSpinComplete={handleSpinComplete}
-                  />
+              {/* Center Stage Area */}
+              <div className="flex-1 min-h-0 flex flex-col justify-center items-center py-1 overflow-y-auto w-full">
+                {/* STAGE: WHEEL */}
+                {shouldShowWheel && (
+                  <div className="w-full flex flex-col items-center justify-center relative">
+                    <Wheel
+                      canSpin={isMyTurn && !isWheelSpinning}
+                      isSpinning={isWheelSpinning}
+                      targetDegrees={wheelTargetDegrees || targetDegrees}
+                      onSpinStart={handleSpinStart}
+                      onSpinComplete={handleSpinComplete}
+                    />
 
-                  {landedCategoryName && (
-                    <motion.div
-                      initial={{ scale: 0, y: 10 }}
-                      animate={{ scale: 1, y: 0 }}
-                      className="absolute bottom-2 bg-gradient-to-r from-amber-400 to-yellow-400 text-slate-950 px-4 py-1.5 rounded-full font-black text-xs shadow-2xl border border-yellow-200"
-                    >
-                      🎯 {landedCategoryName}
-                    </motion.div>
+                    {landedCategoryName && (
+                      <motion.div
+                        initial={{ scale: 0, y: 10 }}
+                        animate={{ scale: 1, y: 0 }}
+                        className="absolute bottom-2 bg-gradient-to-r from-amber-400 to-yellow-400 text-slate-950 px-4 py-1.5 rounded-full font-black text-xs shadow-2xl border border-yellow-200"
+                      >
+                        🎯 {landedCategoryName}
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+
+                {/* STAGE: QUESTION */}
+                {shouldShowQuestion &&
+                  (activeReviewResult || gameState.activeQuestion) && (
+                    <div className="w-full h-full flex flex-col justify-center">
+                      <QuestionView
+                        question={
+                          activeReviewResult
+                            ? activeReviewResult.question
+                            : gameState.activeQuestion!
+                        }
+                        isMyTurn={isMyTurn && !activeReviewResult}
+                        onAnswer={(ansIdx, timeMs) => {
+                          if (gameState.activeQuestion) {
+                            void handleAnswerQuestion(
+                              gameState.activeQuestion,
+                              ansIdx,
+                              timeMs
+                            );
+                          }
+                        }}
+                        lastResult={
+                          activeReviewResult ? activeReviewResult.result : lastResult
+                        }
+                        onDismissResult={() => {
+                          clearTimeout(resultReviewTimerRef.current);
+                          setActiveReviewResult(null);
+                        }}
+                      />
+                    </div>
                   )}
-                </div>
-              )}
 
-              {/* STAGE: QUESTION */}
-              {shouldShowQuestion && (activeReviewResult || gameState.activeQuestion) && (
-                <div className="w-full">
-                  <QuestionView
-                    question={
-                      activeReviewResult
-                        ? activeReviewResult.question
-                        : gameState.activeQuestion!
-                    }
-                    isMyTurn={isMyTurn && !activeReviewResult}
-                    onAnswer={(ansIdx, timeMs) => {
-                      if (gameState.activeQuestion) {
-                        handleAnswerQuestion(gameState.activeQuestion, ansIdx, timeMs);
-                      }
-                    }}
-                    lastResult={activeReviewResult ? activeReviewResult.result : lastResult}
-                    onDismissResult={() => {
-                      clearTimeout(resultReviewTimerRef.current);
-                      setActiveReviewResult(null);
+                {/* STAGE: CROWN CHOICE MODAL */}
+                {shouldShowCrownModal && (
+                  <CrownModal
+                    state={gameState}
+                    myPlayerId={account.id}
+                    onChooseCrown={(action, category, wagerCategory) => {
+                      chooseCrown(action, category, wagerCategory);
                     }}
                   />
-                </div>
-              )}
+                )}
 
-              {/* STAGE: CROWN CHOICE MODAL */}
-              {shouldShowCrownModal && (
-                <CrownModal
-                  state={gameState}
-                  myPlayerId={account.id}
-                  onChooseCrown={(action, category, wagerCategory) => {
-                    chooseCrown(action, category, wagerCategory);
-                  }}
-                />
-              )}
-
-              {/* STAGE: GAME OVER CELEBRATION */}
-              {gameState.status === 'COMPLETED' && (
-                <Card
-                  variant="glow"
-                  className="w-full p-6 text-center shadow-2xl flex flex-col items-center gap-4 border border-amber-400/40 relative z-30"
-                >
-                  <motion.div
-                    animate={{ rotate: [0, -10, 10, -5, 0], scale: [1, 1.15, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-400 via-amber-500 to-yellow-400 text-slate-950 flex items-center justify-center text-4xl shadow-xl shadow-amber-500/30 border-2 border-yellow-200"
+                {/* STAGE: GAME OVER CELEBRATION */}
+                {gameState.status === 'COMPLETED' && (
+                  <Card
+                    variant="glow"
+                    className="w-full p-6 text-center shadow-2xl flex flex-col items-center gap-4 border border-amber-400/40 relative z-30"
                   >
-                    👑
-                  </motion.div>
-
-                  <div>
-                    <h2 className="text-2xl font-black text-white tracking-tight">
-                      {gameState.winnerId === account.id
-                        ? '🎉 Victory is Yours!'
-                        : `${
-                            gameState.winnerId === gameState.players.p1.id
-                              ? gameState.players.p1.username
-                              : gameState.players.p2?.username ?? 'Opponent'
-                          } Won the Match!`}
-                    </h2>
-                    <p className="text-xs text-amber-300 font-extrabold mt-1 uppercase tracking-wider">
-                      {gameState.winReason || 'Crown Duel Concluded'}
-                    </p>
-                  </div>
-
-                  {/* Player Summary Stats Grid */}
-                  <div className="w-full bg-slate-950/80 p-4 rounded-2xl border border-slate-800 flex justify-around items-center text-xs">
-                    <div>
-                      <div className="text-slate-400 font-bold">
-                        {gameState.players.p1.username}
-                      </div>
-                      <div className="text-lg font-black text-amber-400">
-                        👑 {gameState.players.p1.crowns.length}
-                      </div>
-                      <div className="text-[10px] text-slate-500 font-medium">
-                        ⭐ {gameState.players.p1.score} correct
-                      </div>
-                    </div>
-
-                    <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center font-black text-slate-400 text-xs">
-                      VS
-                    </div>
+                    <motion.div
+                      animate={{
+                        rotate: [0, -10, 10, -5, 0],
+                        scale: [1, 1.15, 1],
+                      }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-400 via-amber-500 to-yellow-400 text-slate-950 flex items-center justify-center text-4xl shadow-xl shadow-amber-500/30 border-2 border-yellow-200"
+                    >
+                      👑
+                    </motion.div>
 
                     <div>
-                      <div className="text-slate-400 font-bold">
-                        {gameState.players.p2?.username || 'Opponent'}
+                      <h2 className="text-2xl font-black text-white tracking-tight">
+                        {gameState.winnerId === account.id
+                          ? '🎉 Victory is Yours!'
+                          : `${
+                              gameState.winnerId === gameState.players.p1.id
+                                ? gameState.players.p1.username
+                                : gameState.players.p2?.username ?? 'Opponent'
+                            } Won the Match!`}
+                      </h2>
+                      <p className="text-xs text-amber-300 font-extrabold mt-1 uppercase tracking-wider">
+                        {gameState.winReason || 'Crown Duel Concluded'}
+                      </p>
+                    </div>
+
+                    {/* Player Summary Stats Grid */}
+                    <div className="w-full bg-slate-950/80 p-4 rounded-2xl border border-slate-800 flex justify-around items-center text-xs">
+                      <div>
+                        <div className="text-slate-400 font-bold">
+                          {gameState.players.p1.username}
+                        </div>
+                        <div className="text-lg font-black text-amber-400">
+                          👑 {gameState.players.p1.crowns.length}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-medium">
+                          ⭐ {gameState.players.p1.score} correct
+                        </div>
                       </div>
-                      <div className="text-lg font-black text-amber-400">
-                        👑 {gameState.players.p2?.crowns.length || 0}
+
+                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center font-black text-slate-400 text-xs">
+                        VS
                       </div>
-                      <div className="text-[10px] text-slate-500 font-medium">
-                        ⭐ {gameState.players.p2?.score || 0} correct
+
+                      <div>
+                        <div className="text-slate-400 font-bold">
+                          {gameState.players.p2?.username || 'Opponent'}
+                        </div>
+                        <div className="text-lg font-black text-amber-400">
+                          👑 {gameState.players.p2?.crowns.length || 0}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-medium">
+                          ⭐ {gameState.players.p2?.score || 0} correct
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    glow
-                    onClick={handleNavigateToLobby}
-                    className="w-full"
-                  >
-                    Return to Lobby ➔
-                  </Button>
-                </Card>
-              )}
-            </div>
-
-            {/* Match In-Progress Footer: Forfeit option */}
-            {gameState.status === 'IN_PROGRESS' && (
-              <div className="flex justify-center shrink-0 py-1">
-                <button
-                  onClick={() => {
-                    if (confirm('Are you sure you want to forfeit this match?')) {
-                      resign();
-                    }
-                  }}
-                  className="text-[11px] font-bold text-slate-500 hover:text-rose-400 transition"
-                >
-                  Forfeit Match 🏳️
-                </button>
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      glow
+                      onClick={handleNavigateToLobby}
+                      className="w-full"
+                    >
+                      Return to Lobby ➔
+                    </Button>
+                  </Card>
+                )}
               </div>
-            )}
-          </div>
-        )}
+            </motion.main>
+          )}
 
-        {view === 'GAME' && account && !gameState && (
-          <main className="flex-1 flex items-center justify-center text-sm text-slate-400 z-20">
-            {gameError || (gameLoading ? 'Loading match…' : 'Match unavailable')}
-          </main>
-        )}
-
-        {/* Global Footer */}
-        <footer className="text-center py-1 text-[10px] text-slate-500 font-medium shrink-0 z-20">
-          Trivia Clash • Turn-Based Crown Duels
-        </footer>
+          {view === 'GAME' && account && !gameState && (
+            <motion.main
+              key="game_loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex-1 flex items-center justify-center text-sm text-slate-400 z-20"
+            >
+              {gameError || (gameLoading ? 'Loading match…' : 'Match unavailable')}
+            </motion.main>
+          )}
+        </AnimatePresence>
       </div>
-    </Ssgoi>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   );
 }
