@@ -1,3 +1,4 @@
+import { questionTimeRemaining } from '../utils/gameState';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { ActiveQuestionSync, Category, QuestionResult } from '../../../shared/src/index';
@@ -12,7 +13,7 @@ import { Sparkles, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 interface QuestionViewProps {
   question: ActiveQuestionSync;
   isMyTurn: boolean;
-  onAnswer: (answerIndex: number, timeSpentMs: number) => void;
+  onAnswer: (answerIndex: number, timeSpentMs: number) => void | boolean | Promise<void | boolean>;
   lastResult?: QuestionResult;
   onDismissResult?: () => void;
 }
@@ -25,11 +26,15 @@ export default function QuestionView({
   onDismissResult,
 }: QuestionViewProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [timeLeftMs, setTimeLeftMs] = useState<number>(question.durationMs);
+  const [timeLeftMs, setTimeLeftMs] = useState<number>(questionTimeRemaining(question));
   const [isImageLightboxOpen, setIsImageLightboxOpen] = useState<boolean>(false);
   const [imageLoaded, setImageLoaded] = useState<boolean>(false);
   const [imageError, setImageError] = useState<boolean>(false);
   const hasAnsweredRef = useRef<boolean>(false);
+  const retryAfterRef = useRef(0);
+  const [submitting, setSubmitting] = useState(false);
+  const onAnswerRef = useRef(onAnswer);
+  onAnswerRef.current = onAnswer;
   const startTimeRef = useRef<number>(question.startedAt || Date.now());
 
   const categoryInfo = CATEGORIES[question.category] || CATEGORIES.ART;
@@ -47,15 +52,37 @@ export default function QuestionView({
 
   // Reset state when a new question ID is displayed
   useEffect(() => {
-    startTimeRef.current = Date.now();
-    setTimeLeftMs(totalDuration);
+    startTimeRef.current = question.startedAt;
+    setTimeLeftMs(questionTimeRemaining(question));
+    retryAfterRef.current = 0;
+    setSubmitting(false);
     hasAnsweredRef.current = Boolean(lastResult);
     if (!lastResult) {
       setSelectedIndex(null);
     }
     setImageLoaded(false);
     setImageError(false);
-  }, [question.id, totalDuration]);
+  }, [question.id, question.startedAt, totalDuration]);
+
+  const submitAnswer = useCallback(async (index: number, elapsed: number) => {
+    if (hasAnsweredRef.current) return;
+    hasAnsweredRef.current = true;
+    setSubmitting(true);
+    try {
+      const success = await onAnswerRef.current(index, elapsed);
+      if (success === false) {
+        hasAnsweredRef.current = false;
+        setSelectedIndex(null);
+        retryAfterRef.current = Date.now() + 1000;
+      }
+    } catch {
+      hasAnsweredRef.current = false;
+      setSelectedIndex(null);
+      retryAfterRef.current = Date.now() + 1000;
+    } finally {
+      setSubmitting(false);
+    }
+  }, []);
 
   // Handle timer countdown
   useEffect(() => {
@@ -69,23 +96,21 @@ export default function QuestionView({
       }
 
       const elapsed = Date.now() - startTimeRef.current;
-      const remaining = Math.max(0, totalDuration - elapsed);
+      const remaining = questionTimeRemaining({ startedAt: startTimeRef.current, durationMs: totalDuration });
       setTimeLeftMs(remaining);
 
-      if (remaining <= 0 && !hasAnsweredRef.current) {
-        hasAnsweredRef.current = true;
-        clearInterval(interval);
+      if (remaining <= 0 && !hasAnsweredRef.current && Date.now() >= retryAfterRef.current) {
         void releaseWakeLock();
         if (isMyTurn) {
           playIncorrectBuzzer();
           triggerHaptic('error');
-          onAnswer(-1, totalDuration + 500); // Timeout answer
+          void submitAnswer(-1, Math.max(0, elapsed));
         }
       }
     }, 100);
 
     return () => clearInterval(interval);
-  }, [question.id, isMyTurn, onAnswer, totalDuration, lastResult]);
+  }, [question.id, isMyTurn, totalDuration, lastResult, submitAnswer, submitting]);
 
   // Audio / confetti effects on answer result
   useEffect(() => {
@@ -112,16 +137,15 @@ export default function QuestionView({
     (index: number) => {
       if (!isMyTurn || hasAnsweredRef.current || lastResult) return;
 
-      hasAnsweredRef.current = true;
       setSelectedIndex(index);
       playButtonPop();
       triggerHaptic('selection');
       void releaseWakeLock();
 
       const timeSpent = Math.max(100, Date.now() - startTimeRef.current);
-      onAnswer(index, timeSpent);
+      void submitAnswer(index, timeSpent);
     },
-    [isMyTurn, lastResult, onAnswer]
+    [isMyTurn, lastResult, submitAnswer]
   );
 
   const secondsRemaining = Math.ceil(timeLeftMs / 1000);
@@ -316,7 +340,7 @@ export default function QuestionView({
                   whileTap={
                     !hasAnsweredRef.current && isMyTurn && !lastResult ? { scale: 0.96 } : undefined
                   }
-                  disabled={!isMyTurn || hasAnsweredRef.current || lastResult !== undefined}
+                  disabled={!isMyTurn || submitting || hasAnsweredRef.current || lastResult !== undefined}
                   onClick={() => handleSelectOption(idx)}
                   className={`
                     flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border text-left font-bold text-xs sm:text-sm

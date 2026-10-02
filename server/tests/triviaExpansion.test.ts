@@ -1,3 +1,4 @@
+import { asD1 } from './helpers/d1';
 import { expect, test, describe, beforeEach } from 'bun:test';
 import type { AppDatabase } from '../src/db/database';
 import { createBunDatabase, SCHEMA_SQL } from '../src/db/database';
@@ -19,6 +20,7 @@ import app from '../src/index';
 
 describe('Trivia API Expansion & Graceful Fallbacks', () => {
   let db: AppDatabase;
+  const request = (path: string, init?: RequestInit) => app.request(path, init, { DB: asD1(db) });
 
   beforeEach(async () => {
     db = await createBunDatabase(':memory:');
@@ -125,7 +127,7 @@ describe('Trivia API Expansion & Graceful Fallbacks', () => {
   });
 
   test('GET /api/questions/fetch route delivers trivia questions with provider info', async () => {
-    const res = await app.request('/api/questions/fetch?category=GEOGRAPHY&amount=3');
+    const res = await request('/api/questions/fetch?category=GEOGRAPHY&amount=3');
     expect(res.status).toBe(200);
 
     const body = (await res.json()) as { questions: unknown[]; provider: string };
@@ -138,7 +140,7 @@ describe('Trivia API Expansion & Graceful Fallbacks', () => {
     // First ensure default pack is seeded
     await ensureDefaultPackSeeded(db);
 
-    const res = await app.request('/api/packs/default/expand', {
+    const res = await request('/api/packs/default/expand', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ countPerCategory: 1, categories: ['SPORTS'] })
@@ -160,7 +162,7 @@ describe('Trivia API Expansion & Graceful Fallbacks', () => {
   });
 
   test('POST /api/packs/:packId/expand returns 404 for nonexistent pack', async () => {
-    const res = await app.request('/api/packs/nonexistent_pack_id/expand', {
+    const res = await request('/api/packs/nonexistent_pack_id/expand', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ countPerCategory: 2 })

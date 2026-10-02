@@ -1,3 +1,4 @@
+import { asD1 } from './helpers/d1';
 import { expect, test, describe, beforeEach } from 'bun:test';
 import { app } from '../src/index';
 import type { AppDatabase, CloudflareD1Database } from '../src/db/database';
@@ -13,28 +14,6 @@ import type {
   SpinResponse
 } from '../../shared/src/index';
 
-function asD1(db: AppDatabase): CloudflareD1Database {
-  return {
-    prepare(sql) {
-      const bind = (...params: unknown[]) => ({
-        all: async <T = unknown>() => ({ results: await db.query<T>(sql, params) }),
-        first: async <T = unknown>() => db.queryFirst<T>(sql, params),
-        run: async () => ({ meta: { changes: (await db.execute(sql, params)).rowsAffected } })
-      });
-      return {
-        ...bind(),
-        bind,
-        all: async <T = unknown>() => ({ results: await db.query<T>(sql) }),
-        first: async <T = unknown>() => db.queryFirst<T>(sql),
-        run: async () => ({ meta: { changes: (await db.execute(sql)).rowsAffected } })
-      };
-    },
-    exec: (sql) => db.exec(sql),
-    batch: async (statements) => {
-      for (const statement of statements) await statement.run();
-    }
-  };
-}
 
 describe('Multi-Turn Sequential Game Loop', () => {
   let db: AppDatabase;

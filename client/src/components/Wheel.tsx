@@ -1,3 +1,4 @@
+import { WHEEL_SPIN_DURATION_MS } from '../../../shared/src/index';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Hand } from 'lucide-react';
@@ -267,7 +268,7 @@ export default function Wheel({
     const startAngle = currentRotationRef.current;
     const targetRad = (targetDegrees * Math.PI) / 180;
     const deltaAngle = targetRad - startAngle;
-    const duration = 4400; // ms
+    const duration = WHEEL_SPIN_DURATION_MS; // ms
     const startTime = performance.now();
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;

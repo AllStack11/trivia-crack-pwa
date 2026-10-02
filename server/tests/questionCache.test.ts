@@ -1,3 +1,4 @@
+import { asD1 } from './helpers/d1';
 import { expect, test, describe, beforeEach } from 'bun:test';
 import type { AppDatabase } from '../src/db/database';
 import { createBunDatabase, SCHEMA_SQL } from '../src/db/database';
@@ -19,6 +20,7 @@ import type { QuestionData } from '../../shared/src/index';
 
 describe('Multi-Tier Question Caching System', () => {
   let db: AppDatabase;
+  const request = (path: string, init?: RequestInit) => app.request(path, init, { DB: asD1(db) });
 
   const mockQuestions: QuestionData[] = [
     {
@@ -279,7 +281,7 @@ describe('Multi-Tier Question Caching System', () => {
         }
       ], 'test');
 
-      const resHit = await app.request('/api/questions/fetch?category=GEOGRAPHY&amount=1');
+      const resHit = await request('/api/questions/fetch?category=GEOGRAPHY&amount=1');
       expect(resHit.status).toBe(200);
       expect(resHit.headers.get('Cache-Control')).toBe('private, max-age=60, stale-while-revalidate=300');
       expect(resHit.headers.get('X-Cache-Status')).toBe('HIT');
@@ -289,7 +291,7 @@ describe('Multi-Tier Question Caching System', () => {
       expect(bodyHit.provider).toBe('cache:memory');
 
       // Request with refresh=true forces MISS
-      const resRefresh = await app.request('/api/questions/fetch?category=GEOGRAPHY&amount=1&refresh=true');
+      const resRefresh = await request('/api/questions/fetch?category=GEOGRAPHY&amount=1&refresh=true');
       expect(resRefresh.status).toBe(200);
       expect(resRefresh.headers.get('X-Cache-Status')).toBe('MISS');
       const bodyRefresh = (await resRefresh.json()) as { cached: boolean };
@@ -300,7 +302,7 @@ describe('Multi-Tier Question Caching System', () => {
       memoryCache.put('SCIENCE', mockQuestions, 'test');
       memoryCache.get('SCIENCE', 2);
 
-      const res = await app.request('/api/questions/cache/stats');
+      const res = await request('/api/questions/cache/stats');
       expect(res.status).toBe(200);
 
       const stats = (await res.json()) as {
@@ -322,7 +324,7 @@ describe('Multi-Tier Question Caching System', () => {
       memoryCache.put('SCIENCE', mockQuestions, 'test');
       expect(memoryCache.has('SCIENCE', 1)).toBe(true);
 
-      const res = await app.request('/api/questions/cache/clear', { method: 'POST' });
+      const res = await request('/api/questions/cache/clear', { method: 'POST' });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { cleared: boolean };
       expect(body.cleared).toBe(true);
@@ -333,7 +335,7 @@ describe('Multi-Tier Question Caching System', () => {
     test('POST /api/packs/:packId/expand supports forceRefresh flag', async () => {
       await ensureDefaultPackSeeded(db);
 
-      const res = await app.request('/api/packs/default/expand', {
+      const res = await request('/api/packs/default/expand', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

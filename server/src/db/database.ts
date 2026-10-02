@@ -23,9 +23,11 @@ export interface CloudflareD1Database {
 }
 
 // In-memory or shared instance for local dev
-let localDbInstance: AppDatabase | null = null;
+let localDbInstance: Promise<AppDatabase> | null = null;
 
 export const SCHEMA_SQL = `
+-- Trivia Clash SQLite / Cloudflare D1 Schema
+
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL,
@@ -50,8 +52,24 @@ CREATE TABLE IF NOT EXISTS games (
   last_spin_json TEXT,
   last_result_json TEXT,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 0
 );
+
+
+-- The guard and all game writes share one D1 batch / SQLite transaction.
+-- A stale revision aborts the entire batch before any answer or crown is changed.
+CREATE TABLE IF NOT EXISTS game_mutation_guards (
+  game_id TEXT PRIMARY KEY,
+  expected_revision INTEGER NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS validate_game_mutation
+BEFORE INSERT ON game_mutation_guards
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM games WHERE id = NEW.game_id AND revision = NEW.expected_revision
+  ) THEN RAISE(ABORT, 'Game changed; refresh and try again') END;
+END;
 
 CREATE TABLE IF NOT EXISTS game_crowns (
   game_id TEXT NOT NULL,
@@ -91,6 +109,7 @@ CREATE TABLE IF NOT EXISTS game_answers (
   time_spent_ms INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
+
 CREATE TABLE IF NOT EXISTS game_answer_claims (
   game_id TEXT NOT NULL,
   question_id TEXT NOT NULL,
@@ -99,9 +118,11 @@ CREATE TABLE IF NOT EXISTS game_answer_claims (
 INSERT OR IGNORE INTO game_answer_claims (game_id, question_id)
   SELECT game_id, question_id FROM game_answers;
 
+CREATE INDEX IF NOT EXISTS idx_games_invite ON games(invite_code);
 CREATE INDEX IF NOT EXISTS idx_questions_pack_cat ON questions(pack_id, category);
 CREATE INDEX IF NOT EXISTS idx_game_crowns_lookup ON game_crowns(game_id, player_id);
 CREATE INDEX IF NOT EXISTS idx_game_answers_lookup ON game_answers(game_id, player_id);
+
 CREATE TABLE IF NOT EXISTS accounts (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
@@ -135,10 +156,6 @@ CREATE INDEX IF NOT EXISTS idx_invitations_recipient_status ON game_invitations(
 CREATE INDEX IF NOT EXISTS idx_invitations_pair_status ON game_invitations(sender_id, recipient_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_invites_pending_pair ON game_invitations(sender_id, recipient_id) WHERE status = 'PENDING';
 CREATE INDEX IF NOT EXISTS idx_games_players_updated ON games(player1_id, player2_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_games_invite ON games(invite_code);
-CREATE INDEX IF NOT EXISTS idx_questions_pack_cat ON questions(pack_id, category);
-CREATE INDEX IF NOT EXISTS idx_game_crowns_lookup ON game_crowns(game_id, player_id);
-CREATE INDEX IF NOT EXISTS idx_game_answers_lookup ON game_answers(game_id, player_id);
 
 CREATE TABLE IF NOT EXISTS cached_questions (
   id TEXT PRIMARY KEY,
@@ -257,16 +274,13 @@ export async function getDatabase(env?: { DB?: CloudflareD1Database }): Promise<
     return localDbInstance;
   }
 
-  localDbInstance = await createBunDatabase('trivia-clash.sqlite');
-
-  // Auto-migrate schema on local startup
-  await localDbInstance.exec(SCHEMA_SQL);
-  for (const column of ['winner_id', 'win_reason', 'last_spin_json']) {
-    try {
-      await localDbInstance.execute(`ALTER TABLE games ADD COLUMN ${column} TEXT;`);
-    } catch {
-      // Column already exists.
-    }
-  }
+  localDbInstance = (async () => {
+    const db = await createBunDatabase('trivia-clash.sqlite');
+    await db.exec(SCHEMA_SQL);
+    return db;
+  })().catch((error) => {
+    localDbInstance = null;
+    throw error;
+  });
   return localDbInstance;
 }

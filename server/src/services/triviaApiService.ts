@@ -425,9 +425,9 @@ export async function fetchTriviaQuestionsWithFallback(
   for (const provider of providers) {
     try {
       const fetched = await provider.fn();
-      const filtered = excludeTexts
-        ? fetched.filter((q) => !excludeTexts.has(normalizeQuestionText(q.question)))
-        : fetched;
+      const filtered = fetched.filter((q) =>
+        !excludeIds?.has(q.id) && !excludeTexts?.has(normalizeQuestionText(q.question))
+      );
 
       if (filtered.length > 0) {
         // Cache refill batch to database if db available
@@ -454,13 +454,13 @@ export async function fetchTriviaQuestionsWithFallback(
 
   // 4. Graceful Fallback: Curated Questions Pool
   const curated = CURATED_QUESTIONS.filter((q) => q.category === category);
-  const filteredCurated = excludeTexts
-    ? curated.filter((q) => !excludeTexts.has(normalizeQuestionText(q.question)))
-    : curated;
+  const filteredCurated = curated.filter((q) =>
+    !excludeIds?.has(q.id) && !excludeTexts?.has(normalizeQuestionText(q.question))
+  );
 
   // Shuffle curated questions
   const shuffled = [...filteredCurated].sort(() => Math.random() - 0.5);
-  const fallbackList: QuestionData[] = (shuffled.length > 0 ? shuffled : curated)
+  const fallbackList: QuestionData[] = shuffled
     .slice(0, amount)
     .map((q) => ({
       ...q,

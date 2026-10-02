@@ -2,6 +2,11 @@ export type Category = 'ART' | 'SCIENCE' | 'SPORTS' | 'ENTERTAINMENT' | 'GEOGRAP
 
 export type WheelSlice = Category | 'CROWN';
 
+export const WHEEL_SPIN_DURATION_MS = 4400;
+export const SPIN_RESULT_HOLD_MS = 900;
+export const QUESTION_DURATION_MS = 20000;
+export const QUESTION_ANSWER_GRACE_MS = 2000;
+
 export interface CategoryInfo {
   id: Category;
   name: string;
@@ -142,6 +147,7 @@ export interface QuestionResult {
 
 export interface GameStateSync {
   id: string;
+  revision: number;
   status: GameStatus;
   players: {
     p1: PlayerState;
@@ -153,6 +159,7 @@ export interface GameStateSync {
   mode: GameMode;
   activeQuestion?: ActiveQuestionSync;
   lastSpin?: {
+    id: string;
     targetDegrees: number;
     slice: WheelSlice;
   };

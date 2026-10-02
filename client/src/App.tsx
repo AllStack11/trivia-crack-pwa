@@ -5,7 +5,7 @@ import type {
   QuestionResult,
   WheelSlice,
 } from '../../shared/src/index';
-import { CATEGORIES } from '../../shared/src/index';
+import { CATEGORIES, SPIN_RESULT_HOLD_MS } from '../../shared/src/index';
 import CrownBar from './components/CrownBar';
 import CrownModal from './components/CrownModal';
 import Lobby from './components/Lobby';
@@ -50,7 +50,10 @@ function AppContent() {
   const [isWheelSpinning, setIsWheelSpinning] = useState<boolean>(false);
   const [wheelTargetDegrees, setWheelTargetDegrees] = useState<number | undefined>(undefined);
   const [landedCategoryName, setLandedCategoryName] = useState<string | null>(null);
-  const lastAnimatedSpinRef = useRef<number | null>(null);
+  const lastAnimatedSpinRef = useRef<string | null>(null);
+  const spinPendingRef = useRef(false);
+  const [spinPending, setSpinPending] = useState(false);
+  const spinHoldTimerRef = useRef<number | undefined>(undefined);
 
   // Result review state: keeps question on screen for 3s to show green/red indicator
   const [activeReviewResult, setActiveReviewResult] = useState<{
@@ -185,14 +188,33 @@ function AppContent() {
     if (
       gameState.lastSpin &&
       gameState.currentTurnPlayerId !== account?.id &&
-      lastAnimatedSpinRef.current !== gameState.lastSpin.targetDegrees
+      lastAnimatedSpinRef.current !== gameState.lastSpin.id
     ) {
-      lastAnimatedSpinRef.current = gameState.lastSpin.targetDegrees;
+      lastAnimatedSpinRef.current = gameState.lastSpin.id;
       setWheelTargetDegrees(gameState.lastSpin.targetDegrees);
       setIsWheelSpinning(true);
       setLandedCategoryName(null);
     }
   }, [gameState, account?.id]);
+
+  useEffect(() => {
+    lastAnimatedSpinRef.current = null;
+    lastReviewedResultKeyRef.current = null;
+    setIsWheelSpinning(false);
+    setWheelTargetDegrees(undefined);
+    setLandedCategoryName(null);
+    setActiveReviewResult(null);
+    return () => {
+      clearTimeout(resultReviewTimerRef.current);
+      clearTimeout(spinHoldTimerRef.current);
+    };
+  }, [activeGameId]);
+
+  useEffect(() => {
+    if (gameState?.mode === 'QUESTION') {
+      setActiveReviewResult((review) => review?.question.id === gameState.activeQuestion?.id ? review : null);
+    }
+  }, [gameState?.mode, gameState?.activeQuestion?.id]);
 
   // When spectator receives opponent's answer result (via SSE or polling), display result review for 3s
   useEffect(() => {
@@ -283,17 +305,24 @@ function AppContent() {
     window.history.pushState(null, '', '/');
   };
 
-  // User initiates wheel spin
+  // Lock immediately while the request is pending, before the wheel animation starts.
   const handleSpinStart = async () => {
-    if (isWheelSpinning) return;
+    if (isWheelSpinning || spinPendingRef.current) return;
+    spinPendingRef.current = true;
+    setSpinPending(true);
     setLandedCategoryName(null);
     clearTimeout(resultReviewTimerRef.current);
     setActiveReviewResult(null);
-    const res = await spin();
-    if (res) {
-      lastAnimatedSpinRef.current = res.targetDegrees;
-      setWheelTargetDegrees(res.targetDegrees);
-      setIsWheelSpinning(true);
+    try {
+      const res = await spin();
+      if (res) {
+        lastAnimatedSpinRef.current = res.state.lastSpin?.id ?? null;
+        setWheelTargetDegrees(res.targetDegrees);
+        setIsWheelSpinning(true);
+      }
+    } finally {
+      spinPendingRef.current = false;
+      setSpinPending(false);
     }
   };
 
@@ -304,10 +333,10 @@ function AppContent() {
     setLandedCategoryName(catName);
     playCorrectChime();
 
-    setTimeout(() => {
+    spinHoldTimerRef.current = window.setTimeout(() => {
       setIsWheelSpinning(false);
       setLandedCategoryName(null);
-    }, 900);
+    }, SPIN_RESULT_HOLD_MS);
   }, []);
 
   const handleAnswerQuestion = async (
@@ -327,7 +356,9 @@ function AppContent() {
       resultReviewTimerRef.current = window.setTimeout(() => {
         setActiveReviewResult(null);
       }, 3000);
+      return true;
     }
+    return false;
   };
 
   const toggleMute = () => {
@@ -535,7 +566,7 @@ function AppContent() {
                 {shouldShowWheel && (
                   <div className="w-full flex flex-col items-center justify-center relative">
                     <Wheel
-                      canSpin={isMyTurn && !isWheelSpinning}
+                      canSpin={isMyTurn && !isWheelSpinning && !spinPending}
                       isSpinning={isWheelSpinning}
                       targetDegrees={wheelTargetDegrees || targetDegrees}
                       onSpinStart={handleSpinStart}
@@ -559,6 +590,7 @@ function AppContent() {
                   (activeReviewResult || gameState.activeQuestion) && (
                     <div className="w-full h-full flex flex-col justify-center">
                       <QuestionView
+                        key={activeReviewResult?.question.id ?? gameState.activeQuestion?.id}
                         question={
                           activeReviewResult
                             ? activeReviewResult.question
@@ -567,12 +599,13 @@ function AppContent() {
                         isMyTurn={isMyTurn && !activeReviewResult}
                         onAnswer={(ansIdx, timeMs) => {
                           if (gameState.activeQuestion) {
-                            void handleAnswerQuestion(
+                            return handleAnswerQuestion(
                               gameState.activeQuestion,
                               ansIdx,
                               timeMs
                             );
                           }
+                          return false;
                         }}
                         lastResult={
                           activeReviewResult ? activeReviewResult.result : undefined

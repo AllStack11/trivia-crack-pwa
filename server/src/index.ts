@@ -1,9 +1,9 @@
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
 import { streamSSE } from 'hono/streaming';
 import {
   CATEGORIES,
+  QUESTION_ANSWER_GRACE_MS,
   type AnswerQuestionRequest,
   type Category,
   type CrownChoiceRequest,
@@ -41,27 +41,15 @@ type Bindings = {
   DB?: CloudflareD1Database;
 };
 
-// Map of active SSE client stream write callbacks: gameId -> Set<writer>
-type SseWriter = (data: string) => Promise<void>;
-const gameSubscribers = new Map<string, Set<SseWriter>>();
-
-export function broadcastGameState(gameId: string, state: GameStateSync): void {
-  const subscribers = gameSubscribers.get(gameId);
-  if (!subscribers || subscribers.size === 0) return;
-
-  const payload = JSON.stringify(state);
-  for (const writer of subscribers) {
-    writer(payload).catch(() => {
-      subscribers.delete(writer);
-    });
-  }
-}
-
 export const app = new Hono<{ Bindings: Bindings }>();
 
 // Enable CORS and logging
 app.use('*', cors({ allowHeaders: ['Content-Type', 'Authorization'] }));
-app.use('*', logger());
+app.use('*', async (c, next) => {
+  // Query strings and Authorization headers can contain credentials.
+  console.log(c.req.method, new URL(c.req.url).pathname);
+  await next();
+});
 
 // Health check
 app.get('/api/health', (c) => {
@@ -96,15 +84,15 @@ app.post('/api/auth/login', async (c) => {
     return c.json({ error: error instanceof Error ? error.message : 'Login failed' }, 401);
   }
 });
-function sessionToken(c: Context<{ Bindings: Bindings }>, allowQuery = false): string | undefined {
+function sessionToken(c: Context<{ Bindings: Bindings }>): string | undefined {
   const authorization = c.req.header('Authorization');
   if (authorization?.startsWith('Bearer ')) return authorization.slice(7);
-  return allowQuery ? c.req.query('session') : undefined;
+  return undefined;
 }
 
-async function authenticated(c: Context<{ Bindings: Bindings }>, allowQuery = false) {
+async function authenticated(c: Context<{ Bindings: Bindings }>) {
   const db = await getDatabase(c.env);
-  const token = sessionToken(c, allowQuery);
+  const token = sessionToken(c);
   const account = await getSession(db, token);
   return { db, token, account };
 }
@@ -168,6 +156,7 @@ app.get('/api/games/:gameId', async (c) => {
   if (!account) return c.json({ error: 'Authentication required' }, 401);
   const gameId = c.req.param('gameId');
   if (!(await isGameParticipant(db, gameId, account.id))) return c.json({ error: 'Game not found' }, 404);
+  c.header('Cache-Control', 'no-store');
   const state = await getGameStateSync(db, gameId);
   return state ? c.json(state) : c.json({ error: 'Game not found' }, 404);
 });
@@ -181,7 +170,7 @@ app.post('/api/games/:gameId/spin', async (c) => {
     const { sliceIndex, slice, targetDegrees } = await spinWheel(db, gameId, account.id);
     const state = await getGameStateSync(db, gameId);
     if (!state) return c.json({ error: 'Failed to fetch updated state' }, 500);
-    broadcastGameState(gameId, state);
+
     const response: SpinResponse = { sliceIndex, slice, targetDegrees, state };
     return c.json(response);
   } catch (error) {
@@ -203,7 +192,7 @@ app.post('/api/games/:gameId/answer', async (c) => {
   try {
     const result = await answerQuestion(db, gameId, account.id, body.questionId, body.answerIndex, body.timeSpentMs || 0);
     const state = await getGameStateSync(db, gameId);
-    if (state) broadcastGameState(gameId, state);
+
     return c.json({ result, state });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Answer failed' }, 400);
@@ -225,7 +214,7 @@ app.post('/api/games/:gameId/crown', async (c) => {
     await chooseCrown(db, gameId, account.id, body.action, body.category, body.wagerCategory);
     const state = await getGameStateSync(db, gameId);
     if (!state) return c.json({ error: 'Failed to retrieve state' }, 500);
-    broadcastGameState(gameId, state);
+
     return c.json(state);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Crown choice failed' }, 400);
@@ -240,7 +229,7 @@ app.post('/api/games/:gameId/resign', async (c) => {
   try {
     await resignGame(db, gameId, account.id);
     const state = await getGameStateSync(db, gameId);
-    if (state) broadcastGameState(gameId, state);
+
     return c.json(state);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Resignation failed' }, 400);
@@ -285,7 +274,7 @@ app.post('/api/packs', async (c) => {
       body.title,
       body.description,
       'User',
-      body.questions || []
+      (body.questions || []).map((question) => ({ ...question, difficulty: question.difficulty || 'medium' }))
     );
     const pack = await getPack(db, packId);
     return c.json(pack, 201);
@@ -420,59 +409,47 @@ app.post('/api/questions/cache/clear', async (c) => {
 });
 
 // -------------------------------------------------------------
-// SERVER-SENT EVENTS (SSE) MULTIPLAYER BROADCAST
+// SERVER-SENT EVENTS (SSE) FROM COMMITTED DATABASE STATE
 // -------------------------------------------------------------
 app.get('/api/games/:gameId/events', async (c) => {
-  const { db, account } = await authenticated(c, true);
+  const { db, token, account } = await authenticated(c);
   if (!account) return c.text('Authentication required', 401);
   const gameId = c.req.param('gameId');
   if (!(await isGameParticipant(db, gameId, account.id))) return c.text('Game not found', 404);
   const initial = await getGameStateSync(db, gameId);
   if (!initial) return c.text('Game not found', 404);
+  c.header('Cache-Control', 'no-store');
   return streamSSE(c, async (stream) => {
-    const writer: SseWriter = async (data: string) => {
-      await stream.writeSSE({
-        data,
-        event: 'sync',
-        id: String(Date.now())
-      });
-    };
-
-    if (!gameSubscribers.has(gameId)) {
-      gameSubscribers.set(gameId, new Set());
-    }
-    gameSubscribers.get(gameId)!.add(writer);
-
-    // Send immediate state sync on connect
-    await writer(JSON.stringify(initial));
-
-    // Keep-alive ping interval to prevent Cloudflare Worker idle stream closure
-    const pingInterval = setInterval(async () => {
-      try {
-        await stream.writeSSE({
-          data: JSON.stringify({ ping: Date.now() }),
-          event: 'ping'
-        });
-      } catch {
-        clearInterval(pingInterval);
-      }
-    }, 15000);
-
-    // Clean up when client disconnects
-    stream.onAbort(() => {
-      clearInterval(pingInterval);
-      const subs = gameSubscribers.get(gameId);
-      if (subs) {
-        subs.delete(writer);
-        if (subs.size === 0) {
-          gameSubscribers.delete(gameId);
-        }
-      }
-    });
-
-    // Keep stream open while waiting for events
+    let revision = initial.revision;
+    let lastAuthCheck = Date.now();
+    await stream.writeSSE({ data: JSON.stringify(initial), event: 'sync', id: String(revision) });
+    if (initial.status === 'COMPLETED') return;
+    // All stream I/O remains in its originating request. No isolate-local subscriber map.
     while (!stream.aborted) {
       await stream.sleep(1000);
+      if (stream.aborted) break;
+      if (Date.now() - lastAuthCheck >= 15000) {
+        if (!(await getSession(db, token)) || !(await isGameParticipant(db, gameId, account.id))) {
+          await stream.writeSSE({ data: '{}', event: 'unauthorized' });
+          return;
+        }
+        await stream.writeSSE({ data: '{}', event: 'ping' });
+        lastAuthCheck = Date.now();
+      }
+      const row = await db.queryFirst<{ revision: number; active_question_json: string | null }>(
+        'SELECT revision, active_question_json FROM games WHERE id = ?', [gameId]
+      );
+      if (!row) return;
+      const question = row.active_question_json ? JSON.parse(row.active_question_json) as { startedAt: number; durationMs: number } : null;
+      const expired = question && Date.now() > question.startedAt + question.durationMs + QUESTION_ANSWER_GRACE_MS;
+      if (row.revision === revision && !expired) continue;
+      const state = await getGameStateSync(db, gameId);
+      if (!state) return;
+      if (state.revision !== revision) {
+        await stream.writeSSE({ data: JSON.stringify(state), event: 'sync', id: String(state.revision) });
+        revision = state.revision;
+      }
+      if (state.status === 'COMPLETED') return;
     }
   });
 });

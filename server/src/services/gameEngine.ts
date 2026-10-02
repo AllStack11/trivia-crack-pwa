@@ -1,4 +1,5 @@
 import type {
+  ActiveQuestionSync,
   Category,
   GameStateSync,
   PlayerState,
@@ -6,12 +7,14 @@ import type {
   QuestionResult,
   WheelSlice
 } from '../../../shared/src/index';
-import { WHEEL_SLICES } from '../../../shared/src/index';
+import { WHEEL_SLICES, WHEEL_SPIN_DURATION_MS, SPIN_RESULT_HOLD_MS, QUESTION_DURATION_MS, QUESTION_ANSWER_GRACE_MS } from '../../../shared/src/index';
+import { commitGameMutation, type GameStatement } from './gameMutation';
 import type { AppDatabase } from '../db/database';
 import { getRandomQuestion } from './packService';
 
 interface DbGameRow {
   id: string;
+  revision: number;
   invite_code: string;
   player1_id: string;
   player2_id: string | null;
@@ -134,7 +137,7 @@ export async function spinWheel(
   const sliceCenter = sliceIndex * sliceArc + sliceArc / 2;
   const extraRotations = (4 + Math.floor(Math.random() * 3)) * 360;
   const targetDegrees = extraRotations + ((270 - sliceCenter + 360) % 360);
-  const lastSpinPayload = JSON.stringify({ targetDegrees, slice: landedSlice });
+  const lastSpinPayload = JSON.stringify({ id: crypto.randomUUID(), targetDegrees, slice: landedSlice });
 
   let packIds: string[] = ['default'];
   try {
@@ -147,13 +150,10 @@ export async function spinWheel(
 
   if (landedSlice === 'CROWN') {
     // Transition directly to Crown Choice
-    await db.execute(
-      `UPDATE games
+    await commitGameMutation(db, gameId, game.revision, [{ sql: `UPDATE games
        SET active_mode = 'CROWN_CHOICE', active_question_json = NULL,
            last_spin_json = ?, last_result_json = NULL, updated_at = ?
-       WHERE id = ?`,
-      [lastSpinPayload, now, gameId]
-    );
+       WHERE id = ?`, params: [lastSpinPayload, now, gameId] }]);
   } else {
     // Category question
     const answeredIds = (
@@ -171,18 +171,15 @@ export async function spinWheel(
       questionData: question,
       shuffledOptions: options,
       correctIndex,
-      startedAt: now,
-      durationMs: 20000,
+      startedAt: Date.now() + WHEEL_SPIN_DURATION_MS + SPIN_RESULT_HOLD_MS,
+      durationMs: QUESTION_DURATION_MS,
       isCrown: false
     };
 
-    await db.execute(
-      `UPDATE games
+    await commitGameMutation(db, gameId, game.revision, [{ sql: `UPDATE games
        SET active_mode = 'QUESTION', active_question_json = ?,
            last_spin_json = ?, last_result_json = NULL, updated_at = ?
-       WHERE id = ?`,
-      [JSON.stringify(storedQuestion), lastSpinPayload, now, gameId]
-    );
+       WHERE id = ?`, params: [JSON.stringify(storedQuestion), lastSpinPayload, now, gameId] }]);
   }
 
   return {
@@ -209,6 +206,9 @@ export async function chooseCrown(
   if (game.current_turn_player_id !== playerId) {
     throw new Error('It is not your turn');
   }
+
+  if (game.status !== 'IN_PROGRESS') throw new Error('Game is not active');
+  if (!ALL_CATEGORIES.includes(chosenCategory) || !['claim', 'steal'].includes(action)) throw new Error('Invalid crown choice');
 
   if (game.active_mode !== 'CROWN_CHOICE') {
     throw new Error('Not currently in crown selection mode');
@@ -274,7 +274,7 @@ export async function chooseCrown(
     shuffledOptions: options,
     correctIndex,
     startedAt: now,
-    durationMs: 20000,
+    durationMs: QUESTION_DURATION_MS,
     isCrown: true,
     crownCategory: chosenCategory,
     isSteal: action === 'steal',
@@ -282,13 +282,10 @@ export async function chooseCrown(
     wagerCategory
   };
 
-  await db.execute(
-    `UPDATE games
+  await commitGameMutation(db, gameId, game.revision, [{ sql: `UPDATE games
      SET active_mode = 'QUESTION', active_question_json = ?,
          last_result_json = NULL, updated_at = ?
-     WHERE id = ?`,
-    [JSON.stringify(storedQuestion), now, gameId]
-  );
+     WHERE id = ?`, params: [JSON.stringify(storedQuestion), now, gameId] }]);
 }
 
 /**
@@ -304,6 +301,9 @@ export async function answerQuestion(
 ): Promise<QuestionResult> {
   const game = await db.queryFirst<DbGameRow>('SELECT * FROM games WHERE id = ?', [gameId]);
   if (!game) throw new Error('Game not found');
+
+  if (game.status !== 'IN_PROGRESS') throw new Error('Game is not active');
+  if (!Number.isInteger(answerIndex) || answerIndex < -1) throw new Error('Invalid answer index');
 
   if (game.current_turn_player_id !== playerId) {
     throw new Error('It is not your turn');
@@ -324,31 +324,38 @@ export async function answerQuestion(
     throw new Error('Question mismatch');
   }
 
+  if (answerIndex >= stored.shuffledOptions.length) throw new Error('Invalid answer index');
   const opponentId = game.player1_id === playerId ? game.player2_id : game.player1_id;
-  const isTimeout = timeSpentMs > stored.durationMs + 10000; // 10s network/animation latency tolerance
-  const wasCorrect = !isTimeout && answerIndex === stored.correctIndex;
   const now = Date.now();
-
-  // Record answer in log
-  const answerLogId = `ans_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  try {
-    await db.batch([
-      {
-        sql: 'INSERT INTO game_answer_claims (game_id, question_id) VALUES (?, ?)',
-        params: [gameId, questionId]
-      },
-      {
-        sql: `INSERT INTO game_answers (id, game_id, player_id, question_id, is_correct, time_spent_ms, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        params: [answerLogId, gameId, playerId, questionId, wasCorrect ? 1 : 0, timeSpentMs, now]
-      }
-    ]);
-  } catch (error) {
-    if (error instanceof Error && /unique|constraint/i.test(error.message)) {
-      throw new Error('This question has already been answered');
-    }
-    throw error;
+  // Client timing is telemetry only; the persisted deadline decides correctness.
+  const elapsedMs = Math.max(0, now - stored.startedAt);
+  const isTimeout = elapsedMs > stored.durationMs + QUESTION_ANSWER_GRACE_MS;
+  const wasCorrect = !isTimeout && answerIndex === stored.correctIndex;
+  const answerLogId = 'ans_' + crypto.randomUUID();
+  const statements: GameStatement[] = [
+    { sql: 'INSERT INTO game_answer_claims (game_id, question_id) VALUES (?, ?)', params: [gameId, questionId] },
+    { sql: 'INSERT INTO game_answers (id, game_id, player_id, question_id, is_correct, time_spent_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      params: [answerLogId, gameId, playerId, questionId, wasCorrect ? 1 : 0, elapsedMs, now] }
+  ];
+  void timeSpentMs;
+  const crownRows = await db.query<{ player_id: string; category: Category }>(
+    'SELECT player_id, category FROM game_crowns WHERE game_id = ?', [gameId]
+  );
+  const crowns = new Map<string, Set<Category>>();
+  for (const row of crownRows) {
+    if (!crowns.has(row.player_id)) crowns.set(row.player_id, new Set());
+    crowns.get(row.player_id)!.add(row.category);
   }
+  const changeCrown = (owner: string, category: Category, remove = false) => {
+    if (!crowns.has(owner)) crowns.set(owner, new Set());
+    if (remove) {
+      crowns.get(owner)!.delete(category);
+      statements.push({ sql: 'DELETE FROM game_crowns WHERE game_id = ? AND player_id = ? AND category = ?', params: [gameId, owner, category] });
+    } else {
+      crowns.get(owner)!.add(category);
+      statements.push({ sql: 'INSERT OR IGNORE INTO game_crowns (game_id, player_id, category, created_at) VALUES (?, ?, ?, ?)', params: [gameId, owner, category, now] });
+    }
+  };
 
   let awardedCrown: Category | undefined;
   let stolenCrown: Category | undefined;
@@ -365,21 +372,12 @@ export async function answerQuestion(
     if (stored.isCrown) {
       if (stored.isSteal && stored.crownCategory && stored.targetPlayerId) {
         // Steal success: opponent loses crown, challenger gains crown
-        await db.execute(
-          'DELETE FROM game_crowns WHERE game_id = ? AND player_id = ? AND category = ?',
-          [gameId, stored.targetPlayerId, stored.crownCategory]
-        );
-        await db.execute(
-          'INSERT OR IGNORE INTO game_crowns (game_id, player_id, category, created_at) VALUES (?, ?, ?, ?)',
-          [gameId, playerId, stored.crownCategory, now]
-        );
+        changeCrown(stored.targetPlayerId, stored.crownCategory, true);
+        changeCrown(playerId, stored.crownCategory);
         stolenCrown = stored.crownCategory;
       } else if (stored.crownCategory) {
         // Claim crown success
-        await db.execute(
-          'INSERT OR IGNORE INTO game_crowns (game_id, player_id, category, created_at) VALUES (?, ?, ?, ?)',
-          [gameId, playerId, stored.crownCategory, now]
-        );
+        changeCrown(playerId, stored.crownCategory);
         awardedCrown = stored.crownCategory;
       }
 
@@ -404,12 +402,7 @@ export async function answerQuestion(
     }
 
     // Check 6-crown victory condition for active player
-    const crownsAfter = (
-      await db.query<{ category: Category }>(
-        'SELECT category FROM game_crowns WHERE game_id = ? AND player_id = ?',
-        [gameId, playerId]
-      )
-    ).map((r) => r.category);
+    const crownsAfter = Array.from(crowns.get(playerId) || []);
 
     if (crownsAfter.length >= 6) {
       winnerId = playerId;
@@ -425,23 +418,12 @@ export async function answerQuestion(
 
     // If challenger failed a steal, forfeit wagered crown to opponent!
     if (stored.isCrown && stored.isSteal && stored.wagerCategory && opponentId) {
-      await db.execute(
-        'DELETE FROM game_crowns WHERE game_id = ? AND player_id = ? AND category = ?',
-        [gameId, playerId, stored.wagerCategory]
-      );
-      await db.execute(
-        'INSERT OR IGNORE INTO game_crowns (game_id, player_id, category, created_at) VALUES (?, ?, ?, ?)',
-        [gameId, opponentId, stored.wagerCategory, now]
-      );
+      changeCrown(playerId, stored.wagerCategory, true);
+      changeCrown(opponentId, stored.wagerCategory);
       lostCrown = stored.wagerCategory;
 
       // Check if defender now reached 6 crowns from forfeited crown
-      const oppCrowns = (
-        await db.query<{ category: Category }>(
-          'SELECT category FROM game_crowns WHERE game_id = ? AND player_id = ?',
-          [gameId, opponentId]
-        )
-      ).map((r) => r.category);
+      const oppCrowns = Array.from(crowns.get(opponentId) || []);
 
       if (oppCrowns.length >= 6) {
         winnerId = opponentId;
@@ -455,18 +437,8 @@ export async function answerQuestion(
       roundNumber += 1;
       if (roundNumber > game.max_rounds && !winnerId) {
         // Round limit reached: decide winner by crown count, then score
-        const p1Crowns = (
-          await db.query<{ category: Category }>(
-            'SELECT category FROM game_crowns WHERE game_id = ? AND player_id = ?',
-            [gameId, game.player1_id]
-          )
-        ).length;
-        const p2Crowns = (
-          await db.query<{ category: Category }>(
-            'SELECT category FROM game_crowns WHERE game_id = ? AND player_id = ?',
-            [gameId, game.player2_id || '']
-          )
-        ).length;
+        const p1Crowns = (crowns.get(game.player1_id)?.size || 0);
+        const p2Crowns = (crowns.get(game.player2_id || '')?.size || 0);
 
         if (p1Crowns > p2Crowns) {
           winnerId = game.player1_id;
@@ -532,13 +504,11 @@ export async function answerQuestion(
 
   const status = winnerId ? 'COMPLETED' : 'IN_PROGRESS';
 
-  await db.execute(
-    `UPDATE games
+  statements.push({ sql: `UPDATE games
      SET current_turn_player_id = ?, crown_gauge = ?, round_number = ?,
          status = ?, active_mode = ?, winner_id = ?, win_reason = ?,
          active_question_json = NULL, last_result_json = ?, updated_at = ?
-     WHERE id = ?`,
-    [
+     WHERE id = ?`, params: [
       nextPlayerId,
       nextCrownGauge,
       roundNumber,
@@ -549,8 +519,8 @@ export async function answerQuestion(
       JSON.stringify(result),
       now,
       gameId
-    ]
-  );
+    ] });
+  await commitGameMutation(db, gameId, game.revision, statements);
 
   return result;
 }
@@ -566,24 +536,44 @@ export async function resignGame(
   const game = await db.queryFirst<DbGameRow>('SELECT * FROM games WHERE id = ?', [gameId]);
   if (!game) throw new Error('Game not found');
 
+  if (game.player1_id !== playerId && game.player2_id !== playerId) throw new Error('Game not found');
   if (game.status === 'COMPLETED') return;
 
   const opponentId = game.player1_id === playerId ? game.player2_id : game.player1_id;
   const now = Date.now();
 
-  await db.execute(
-    `UPDATE games
-     SET status = 'COMPLETED', active_mode = 'GAME_OVER', winner_id = ?,
+  await commitGameMutation(db, gameId, game.revision, [{ sql: `UPDATE games
+     SET status = 'COMPLETED', active_mode = 'GAME_OVER', active_question_json = NULL, winner_id = ?,
          win_reason = 'Opponent surrendered', updated_at = ?
-     WHERE id = ?`,
-    [opponentId, now, gameId]
-  );
+     WHERE id = ?`, params: [opponentId, now, gameId] }]);
+}
+
+/** Read a coherent snapshot, and resolve elapsed questions even if the player disconnected. */
+export async function getGameStateSync(db: AppDatabase, gameId: string): Promise<GameStateSync | null> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const state = await buildGameStateSync(db, gameId);
+    if (!state) return null;
+    const question = state.activeQuestion;
+    if (state.status === 'IN_PROGRESS' && state.mode === 'QUESTION' && question &&
+        Date.now() > question.startedAt + question.durationMs + QUESTION_ANSWER_GRACE_MS) {
+      try {
+        await answerQuestion(db, gameId, state.currentTurnPlayerId, question.id, -1, 0);
+      } catch (error) {
+        const current = await db.queryFirst<{ revision: number }>('SELECT revision FROM games WHERE id = ?', [gameId]);
+        if (current?.revision === state.revision) throw error;
+      }
+      continue;
+    }
+    const current = await db.queryFirst<{ revision: number }>('SELECT revision FROM games WHERE id = ?', [gameId]);
+    if (current?.revision === state.revision) return state;
+  }
+  throw new Error('Game changed; refresh and try again');
 }
 
 /**
  * Build GameStateSync snapshot for clients
  */
-export async function getGameStateSync(
+async function buildGameStateSync(
   db: AppDatabase,
   gameId: string
 ): Promise<GameStateSync | null> {
@@ -683,10 +673,10 @@ export async function getGameStateSync(
     }
   }
 
-  let lastSpin: { targetDegrees: number; slice: WheelSlice } | undefined;
+  let lastSpin: { id: string; targetDegrees: number; slice: WheelSlice } | undefined;
   if (game.last_spin_json) {
     try {
-      lastSpin = JSON.parse(game.last_spin_json) as { targetDegrees: number; slice: WheelSlice };
+      lastSpin = JSON.parse(game.last_spin_json) as { id: string; targetDegrees: number; slice: WheelSlice };
     } catch {
       // Ignored
     }
@@ -694,6 +684,7 @@ export async function getGameStateSync(
 
   return {
     id: game.id,
+    revision: game.revision,
     status: game.status,
     players: {
       p1: p1State,

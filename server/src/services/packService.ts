@@ -38,7 +38,7 @@ export async function ensureDefaultPackSeeded(db: AppDatabase): Promise<void> {
 
   if (!existing) {
     await db.execute(
-      `INSERT INTO question_packs (id, title, description, is_default, created_by, created_at)
+      `INSERT OR IGNORE INTO question_packs (id, title, description, is_default, created_by, created_at)
        VALUES (?, ?, ?, 1, 'system', ?)`,
       ['default', 'Classic Trivia Clash Pack', 'Standard 180-question curated bank spanning all 6 classic categories with visual trivia', Date.now()]
     );
@@ -276,19 +276,18 @@ export async function getRandomQuestion(
 ): Promise<QuestionData> {
   await ensureDefaultPackSeeded(db);
   const activePacks = packIds.length > 0 ? packIds : ['default'];
-  const placeholders = activePacks.map(() => '?').join(',');
+  const placeholders = 'SELECT value FROM json_each(?)';
 
   let querySql = `
     SELECT * FROM questions
     WHERE pack_id IN (${placeholders})
     AND category = ?
   `;
-  const queryParams: unknown[] = [...activePacks, category];
+  const queryParams: unknown[] = [JSON.stringify(activePacks), category];
 
   if (excludeQuestionIds.length > 0) {
-    const excludePlaceholders = excludeQuestionIds.map(() => '?').join(',');
-    querySql += ` AND id NOT IN (${excludePlaceholders})`;
-    queryParams.push(...excludeQuestionIds);
+    querySql += ' AND id NOT IN (SELECT value FROM json_each(?))';
+    queryParams.push(JSON.stringify(excludeQuestionIds));
   }
 
   querySql += ' ORDER BY RANDOM() LIMIT 1';
@@ -315,7 +314,7 @@ export async function getRandomQuestion(
   }
 
   // If all local questions in this category have been exhausted, fetch dynamically with cache-first lookup
-  const liveResult = await fetchLiveQuestions(category, 1, 'default', db);
+  const liveResult = await fetchLiveQuestions(category, 1, 'default', db, false, excludeQuestionIds);
   if (liveResult.questions.length > 0) {
     return liveResult.questions[0];
   }
@@ -324,6 +323,8 @@ export async function getRandomQuestion(
   const fallback = CURATED_QUESTIONS.find((q) => q.category === category) || CURATED_QUESTIONS[0];
   return {
     ...fallback,
+    // Once every source is exhausted, replay content as a new answerable occurrence.
+    id: `replay_${crypto.randomUUID()}`,
     packId: 'default'
   };
 }
@@ -350,13 +351,15 @@ export async function fetchLiveQuestions(
   amount: number = 5,
   packId: string = 'default',
   db?: AppDatabase,
-  forceRefresh?: boolean
+  forceRefresh?: boolean,
+  excludeQuestionIds?: string[]
 ) {
   return fetchTriviaQuestionsWithFallback({
     category,
     amount,
     packId,
     db,
-    forceRefresh
+    forceRefresh,
+    excludeQuestionIds
   });
 }

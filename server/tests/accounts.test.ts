@@ -1,5 +1,6 @@
+import { asD1 } from './helpers/d1';
 import { beforeEach, describe, expect, test } from 'bun:test';
-import type { AppDatabase, CloudflareD1Database } from '../src/db/database';
+import type { AppDatabase } from '../src/db/database';
 import { createBunDatabase, SCHEMA_SQL } from '../src/db/database';
 import { getSession, listDirectory, listPlayers, login, logout, register } from '../src/services/authService';
 import { createGame } from '../src/services/gameEngine';
@@ -14,28 +15,6 @@ import {
 
 const PASSWORD = 'correct-horse-battery';
 
-function asD1(db: AppDatabase): CloudflareD1Database {
-  return {
-    prepare(sql) {
-      const bind = (...params: unknown[]) => ({
-        all: async <T = unknown>() => ({ results: await db.query<T>(sql, params) }),
-        first: async <T = unknown>() => db.queryFirst<T>(sql, params),
-        run: async () => ({ meta: { changes: (await db.execute(sql, params)).rowsAffected } })
-      });
-      return {
-        ...bind(),
-        bind,
-        all: async <T = unknown>() => ({ results: await db.query<T>(sql) }),
-        first: async <T = unknown>() => db.queryFirst<T>(sql),
-        run: async () => ({ meta: { changes: (await db.execute(sql)).rowsAffected } })
-      };
-    },
-    exec: (sql) => db.exec(sql),
-    batch: async (statements) => {
-      for (const statement of statements) await statement.run();
-    }
-  };
-}
 
 describe('account identity and invitations', () => {
   let db: AppDatabase;
@@ -93,6 +72,44 @@ describe('account identity and invitations', () => {
     const loggedIn = await login(db, 'Charlie', '1234');
     expect(loggedIn.account.username).toBe('Charlie');
     expect(loggedIn.account.id).toBe(created.account.id);
+  });
+
+  test('username-only registration and case-insensitive login work through the API', async () => {
+    const env = { DB: asD1(db) };
+    const post = (path: string, body: unknown) => app.request(path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    }, env);
+    const registered = await post('/api/auth/register', { username: 'DisplayName' });
+    expect(registered.status).toBe(201);
+    const profile = await registered.json<{ account: { id: string; username: string }; token: string }>();
+    const loggedIn = await post('/api/auth/login', { username: 'displayname' });
+    expect(loggedIn.status).toBe(200);
+    const session = await loggedIn.json<{ account: { id: string; username: string }; token: string }>();
+    expect(session.account).toEqual(profile.account);
+    expect(session.account.username).toBe('DisplayName');
+    const restored = await app.request('/api/me', { headers: { Authorization: 'Bearer ' + session.token } }, env);
+    expect(restored.status).toBe(200);
+    expect(await restored.json()).toEqual({ account: profile.account });
+    await post('/api/auth/register', { username: 'Protected', pin: '4321' });
+    expect((await post('/api/auth/login', { username: 'protected' })).status).toBe(401);
+    expect((await post('/api/auth/login', { username: 'protected', pin: '0000' })).status).toBe(401);
+    expect((await post('/api/auth/login', { username: 'protected', pin: '4321' })).status).toBe(200);
+  });
+
+  test('every game route authenticates and hides matches from other profiles', async () => {
+    const alice = await register(db, { username: 'Alice' });
+    const bob = await register(db, { username: 'Bob' });
+    const eve = await register(db, { username: 'Eve' });
+    const { gameId } = await createGame(db, alice.account.id, bob.account.id);
+    const env = { DB: asD1(db) };
+    for (const suffix of ['', '/events', '/spin', '/answer', '/crown', '/resign']) {
+      const method = suffix === '' || suffix === '/events' ? 'GET' : 'POST';
+      const path = '/api/games/' + gameId + suffix;
+      expect((await app.request(path, { method }, env)).status).toBe(401);
+      expect((await app.request(path, { method, headers: { Authorization: 'Bearer ' + eve.token } }, env)).status).toBe(404);
+    }
+    const game = await db.queryFirst<{ revision: number; status: string }>('SELECT revision, status FROM games WHERE id = ?', [gameId]);
+    expect(game).toEqual({ revision: 0, status: 'IN_PROGRESS' });
   });
 
   test('public directory endpoint lists players and reflects hasPin status', async () => {
