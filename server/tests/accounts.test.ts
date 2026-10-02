@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { AppDatabase, CloudflareD1Database } from '../src/db/database';
 import { createBunDatabase, SCHEMA_SQL } from '../src/db/database';
-import { getSession, listPlayers, login, logout, register } from '../src/services/authService';
+import { getSession, listDirectory, listPlayers, login, logout, register } from '../src/services/authService';
 import { createGame } from '../src/services/gameEngine';
 import app from '../src/index';
 import {
@@ -52,7 +52,7 @@ describe('account identity and invitations', () => {
     await expect(register(db, { username: 'alice', email: 'another@example.test', password: PASSWORD })).rejects.toThrow('username');
     await expect(register(db, { username: 'Other', email: 'alice@example.TEST', password: PASSWORD })).rejects.toThrow('email');
     await expect(login(db, 'ALICE@example.test', PASSWORD)).resolves.toMatchObject({ account: created.account });
-    await expect(login(db, 'alice@example.test', 'incorrect-password')).rejects.toThrow('Invalid email or password');
+    await expect(login(db, 'alice@example.test', 'incorrect-password')).rejects.toThrow('Incorrect PIN');
     expect(await getSession(db, created.token, Date.now() + 31 * 24 * 60 * 60 * 1000)).toBeNull();
     await logout(db, created.token);
     expect(await getSession(db, created.token)).toBeNull();
@@ -66,6 +66,59 @@ describe('account identity and invitations', () => {
     await expect(register(db, { username: 'Other', email: 'alice@example.test', password: PASSWORD }))
       .rejects.toMatchObject({ name: 'RegistrationError', status: 409 });
     expect(created.account.username).toBe('Alice');
+  });
+  test('creates player with username only and logs in without password', async () => {
+    const created = await register(db, { username: 'Sam' });
+    expect(created.account.username).toBe('Sam');
+    expect(await getSession(db, created.token)).toEqual(created.account);
+
+    const loggedIn = await login(db, 'Sam');
+    expect(loggedIn.account.username).toBe('Sam');
+    expect(loggedIn.account.id).toBe(created.account.id);
+    expect(await getSession(db, loggedIn.token)).toEqual(created.account);
+  });
+
+  test('creates player with 4-digit PIN and requires PIN on login', async () => {
+    await expect(register(db, { username: 'BadPin', pin: '123' })).rejects.toThrow('PIN must be 4 digits');
+    await expect(register(db, { username: 'BadPin', pin: 'abcd' })).rejects.toThrow('PIN must be 4 digits');
+
+    const created = await register(db, { username: 'Charlie', pin: '1234' });
+    expect(created.account.username).toBe('Charlie');
+
+    // Missing PIN
+    await expect(login(db, 'Charlie')).rejects.toThrow('Incorrect PIN');
+    // Wrong PIN
+    await expect(login(db, 'Charlie', '9999')).rejects.toThrow('Incorrect PIN');
+    // Correct PIN
+    const loggedIn = await login(db, 'Charlie', '1234');
+    expect(loggedIn.account.username).toBe('Charlie');
+    expect(loggedIn.account.id).toBe(created.account.id);
+  });
+
+  test('public directory endpoint lists players and reflects hasPin status', async () => {
+    const sam = await register(db, { username: 'Sam' });
+    const charlie = await register(db, { username: 'Charlie', pin: '4321' });
+
+    const dir = await listDirectory(db);
+    expect(dir).toEqual([
+      { id: charlie.account.id, username: 'Charlie', hasPin: true },
+      { id: sam.account.id, username: 'Sam', hasPin: false }
+    ]);
+
+    const env = { DB: asD1(db) };
+    const res = await app.request('/api/auth/directory', {}, env);
+    expect(res.status).toBe(200);
+    const body = await res.json<{ players: Array<{ id: string; username: string; hasPin: boolean }> }>();
+    expect(body.players).toEqual([
+      { id: charlie.account.id, username: 'Charlie', hasPin: true },
+      { id: sam.account.id, username: 'Sam', hasPin: false }
+    ]);
+  });
+
+  test('case-insensitive username uniqueness is preserved', async () => {
+    await register(db, { username: 'Alex' });
+    await expect(register(db, { username: 'alex' })).rejects.toThrow('already taken');
+    await expect(register(db, { username: 'ALEX' })).rejects.toThrow('already taken');
   });
 
   test('registration route keeps client errors distinct from database failures', async () => {

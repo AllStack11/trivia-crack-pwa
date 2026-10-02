@@ -198,12 +198,29 @@ export interface QuestionPackMeta {
 
 // Request / Response payloads
 export interface AuthCredentials {
-  email: string;
-  password: string;
+  email?: string;
+  password?: string;
+  username?: string;
+  pin?: string;
 }
 
-export interface RegisterRequest extends AuthCredentials {
+export type LoginRequest = AuthCredentials;
+
+export interface RegisterRequest {
   username: string;
+  pin?: string;
+  email?: string;
+  password?: string;
+}
+
+export interface DirectoryPlayer {
+  id: string;
+  username: string;
+  hasPin: boolean;
+}
+
+export interface DirectoryResponse {
+  players: DirectoryPlayer[];
 }
 
 export interface AuthResponse {

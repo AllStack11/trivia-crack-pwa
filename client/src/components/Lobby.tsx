@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import type {
   AccountSummary,
   AuthResponse,
+  DirectoryPlayer,
   GameListResponse,
   InvitationSummary,
   PlayerSummary,
@@ -34,6 +35,26 @@ async function readResponse<T>(response: Response): Promise<T> {
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
+const AVATAR_GRADIENTS = [
+  'from-pink-500 to-rose-600',
+  'from-purple-500 to-indigo-600',
+  'from-blue-500 to-cyan-600',
+  'from-emerald-500 to-teal-600',
+  'from-amber-500 to-orange-600',
+  'from-violet-500 to-purple-600',
+  'from-fuchsia-500 to-pink-600',
+  'from-cyan-500 to-blue-600',
+];
+
+function getAvatarGradient(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash |= 0;
+  }
+  const index = Math.abs(hash) % AVATAR_GRADIENTS.length;
+  return AVATAR_GRADIENTS[index]!;
+}
 
 type LobbyTab = 'matches' | 'players' | 'champions' | 'packs';
 
@@ -49,10 +70,13 @@ export default function Lobby({
   const [players, setPlayers] = useState<Player[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
-  const [email, setEmail] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [registering, setRegistering] = useState(false);
+  const [directory, setDirectory] = useState<DirectoryPlayer[]>([]);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [selectedPinPlayer, setSelectedPinPlayer] = useState<DirectoryPlayer | null>(null);
+  const [pinInput, setPinInput] = useState('');
+  const [showNewPlayer, setShowNewPlayer] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newPin, setNewPin] = useState('');
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [muted, setMuted] = useState<boolean>(isAudioMuted());
@@ -105,23 +129,103 @@ export default function Lobby({
     return () => window.clearInterval(interval);
   }, [account, refreshDashboard]);
 
-  const handleAuth = async (event: FormEvent) => {
+  const fetchDirectory = useCallback(async () => {
+    setDirectoryLoading(true);
+    try {
+      const res = await fetch(apiUrl('/api/auth/directory'));
+      const data = await readResponse<{ players: DirectoryPlayer[] }>(res);
+      setDirectory(data.players || []);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not load player directory');
+    } finally {
+      setDirectoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!account) {
+      void fetchDirectory();
+    }
+  }, [account, fetchDirectory]);
+
+  const handleSelectPlayer = async (player: DirectoryPlayer) => {
+    playButtonPop();
+    setErrorMessage(null);
+    if (player.hasPin) {
+      setSelectedPinPlayer(player);
+      setPinInput('');
+      return;
+    }
+
+    setLoadingAction(`login:${player.id}`);
+    try {
+      const res = await fetch(apiUrl('/api/auth/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: player.username })
+      });
+      const data = await readResponse<AuthResponse>(res);
+      onAuth({ ...data.account, token: data.token });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not sign in');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleUnlockPin = async (event: FormEvent) => {
     event.preventDefault();
-    setLoadingAction('auth');
+    if (!selectedPinPlayer || pinInput.length !== 4) return;
+    setLoadingAction('pin');
     setErrorMessage(null);
     try {
-      const payload = registering ? { username, email, password } : { email, password };
-      const data = await readResponse<AuthResponse>(
-        await fetch(apiUrl(`/api/auth/${registering ? 'register' : 'login'}`), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
-      );
+      const res = await fetch(apiUrl('/api/auth/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: selectedPinPlayer.username, pin: pinInput })
+      });
+      const data = await readResponse<AuthResponse>(res);
       onAuth({ ...data.account, token: data.token });
-      setPassword('');
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Authentication failed');
+      setErrorMessage(error instanceof Error ? error.message : 'Incorrect PIN');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleCreatePlayer = async (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = newUsername.trim();
+    if (!trimmed) {
+      setErrorMessage('Please enter a username');
+      return;
+    }
+    if (trimmed.length > 24) {
+      setErrorMessage('Username must be 1–24 characters');
+      return;
+    }
+    if (newPin && !/^\d{4}$/.test(newPin)) {
+      setErrorMessage('PIN must be exactly 4 digits');
+      return;
+    }
+    setLoadingAction('create');
+    setErrorMessage(null);
+    try {
+      const res = await fetch(apiUrl('/api/auth/register'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: trimmed,
+          pin: newPin || undefined
+        })
+      });
+      const data = await readResponse<AuthResponse>(res);
+      onAuth({ ...data.account, token: data.token });
+      setNewUsername('');
+      setNewPin('');
+      setShowNewPlayer(false);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not create player');
     } finally {
       setLoadingAction(null);
     }
@@ -235,7 +339,7 @@ export default function Lobby({
               disabled={loadingAction !== null}
               className="text-xs"
             >
-              Log out
+              Switch Player
             </Button>
           )}
         </div>
@@ -253,97 +357,236 @@ export default function Lobby({
         </motion.div>
       )}
 
-      {/* Unauthenticated Mode (Login / Register) */}
+      {/* Unauthenticated Mode: Who's Playing? Directory */}
       {!account ? (
-        <div className="flex flex-col gap-4">
-          {/* Segmented Auth Mode Switcher */}
-          <div className="flex bg-slate-950/80 p-1 rounded-2xl border border-slate-800">
-            <button
-              onClick={() => {
-                setRegistering(false);
-                setErrorMessage(null);
-                playButtonPop();
-              }}
-              className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
-                !registering
-                  ? 'bg-amber-500 text-slate-950 shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Log In
-            </button>
-            <button
-              onClick={() => {
-                setRegistering(true);
-                setErrorMessage(null);
-                playButtonPop();
-              }}
-              className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
-                registering
-                  ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Create Account
-            </button>
-          </div>
+        selectedPinPlayer ? (
+          /* PIN Prompt View */
+          <div className="flex flex-col gap-4">
+            <Card variant="glow" className="p-6 flex flex-col items-center text-center">
+              <div
+                className={`w-20 h-20 rounded-full bg-gradient-to-tr ${getAvatarGradient(
+                  selectedPinPlayer.username
+                )} flex items-center justify-center text-3xl font-black text-white shadow-xl shadow-black/50 mb-3`}
+              >
+                {selectedPinPlayer.username.charAt(0).toUpperCase()}
+              </div>
+              <h2 className="text-xl font-black text-white">{selectedPinPlayer.username}</h2>
+              <p className="text-xs text-slate-400 mt-1 mb-5">Enter your 4-digit PIN to play</p>
 
-          <form onSubmit={handleAuth} className="flex flex-col gap-3">
-            {registering && (
-              <label className="text-xs font-bold text-slate-300">
-                Username
+              <form onSubmit={handleUnlockPin} className="w-full max-w-xs flex flex-col gap-4 items-center">
                 <input
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoComplete="username"
-                  placeholder="e.g. TriviaMaster"
-                  className="mt-1 w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
+                  type="password"
+                  inputMode="numeric"
+                  pattern="\d*"
+                  maxLength={4}
+                  autoFocus
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="••••"
+                  className="w-44 text-center tracking-[0.6em] text-2xl font-mono font-black bg-slate-950/90 border border-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 rounded-2xl py-3 px-4 text-white placeholder-slate-600 focus:outline-none transition-all shadow-inner"
                 />
-              </label>
-            )}
-            <label className="text-xs font-bold text-slate-300">
-              Email Address
-              <input
-                required
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-                placeholder="you@example.com"
-                className="mt-1 w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
-              />
-            </label>
-            <label className="text-xs font-bold text-slate-300">
-              Password
-              <input
-                required
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete={registering ? 'new-password' : 'current-password'}
-                placeholder="••••••••"
-                className="mt-1 w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
-              />
-            </label>
 
-            <Button
-              variant="primary"
-              size="lg"
-              glow
-              loading={loadingAction === 'auth'}
-              type="submit"
-              className="w-full mt-1"
-            >
-              {registering ? 'Create Your Account' : 'Sign In to Play'}
-            </Button>
-          </form>
-
-          {/* Feature Showcase Banner */}
-          <div className="pt-2">
-            <CharacterShowcase initialCategory="SCIENCE" />
+                <div className="flex flex-col w-full gap-2 mt-2">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    glow
+                    type="submit"
+                    disabled={pinInput.length !== 4 || loadingAction !== null}
+                    loading={loadingAction === 'pin'}
+                    className="w-full"
+                  >
+                    Unlock & Play
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                    onClick={() => {
+                      setSelectedPinPlayer(null);
+                      setPinInput('');
+                      setErrorMessage(null);
+                      playButtonPop();
+                    }}
+                    disabled={loadingAction !== null}
+                    className="w-full"
+                  >
+                    Back to Players
+                  </Button>
+                </div>
+              </form>
+            </Card>
+            <div className="pt-2">
+              <CharacterShowcase initialCategory="SCIENCE" />
+            </div>
           </div>
-        </div>
+        ) : showNewPlayer ? (
+          /* Inline New Player Form */
+          <div className="flex flex-col gap-4">
+            <Card variant="glow" className="p-5">
+              <div className="text-center mb-4">
+                <h2 className="text-xl font-black text-white">Create New Player</h2>
+                <p className="text-xs text-slate-400 mt-1">Choose a name to join the game</p>
+              </div>
+
+              <form onSubmit={handleCreatePlayer} className="flex flex-col gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Username
+                  </label>
+                  <input
+                    required
+                    maxLength={24}
+                    value={newUsername}
+                    onChange={(e) => setNewUsername(e.target.value)}
+                    autoComplete="username"
+                    autoFocus
+                    placeholder="Enter your name e.g. Alex"
+                    className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-300">
+                      4-Digit PIN (Optional)
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-medium">Optional</span>
+                  </div>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="\d*"
+                    maxLength={4}
+                    value={newPin}
+                    onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="4 digits (e.g. 1234)"
+                    className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors font-mono"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1.5 leading-snug">
+                    Leave blank for 1-tap login, or set 4 digits to lock your turns.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-1">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    glow
+                    type="submit"
+                    loading={loadingAction === 'create'}
+                    className="w-full"
+                  >
+                    Create Player & Play
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                    onClick={() => {
+                      setShowNewPlayer(false);
+                      setNewUsername('');
+                      setNewPin('');
+                      setErrorMessage(null);
+                      playButtonPop();
+                    }}
+                    disabled={loadingAction !== null}
+                    className="w-full"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </Card>
+            <div className="pt-2">
+              <CharacterShowcase initialCategory="SCIENCE" />
+            </div>
+          </div>
+        ) : (
+          /* Who's Playing? Directory Grid */
+          <div className="flex flex-col gap-4">
+            <div className="text-center pt-1">
+              <h2 className="text-2xl font-black tracking-tight text-white">Who's Playing?</h2>
+              <p className="text-xs text-slate-400 mt-1">Select your profile or create a new player</p>
+            </div>
+
+            {directoryLoading && directory.length === 0 ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-2">
+                <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs text-slate-400">Loading players...</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {directory.map((player) => (
+                  <motion.button
+                    key={player.id}
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => handleSelectPlayer(player)}
+                    disabled={loadingAction !== null}
+                    className="relative flex flex-col items-center justify-center p-4 bg-slate-900/80 hover:bg-slate-800/90 border border-slate-800 hover:border-amber-500/60 rounded-2xl transition-all shadow-lg group text-center cursor-pointer disabled:opacity-60"
+                  >
+                    {player.hasPin && (
+                      <span
+                        className="absolute top-2.5 right-2.5 text-xs bg-slate-950/80 px-1.5 py-0.5 rounded-md border border-slate-700/80 text-amber-300"
+                        title="PIN Protected"
+                      >
+                        🔒
+                      </span>
+                    )}
+
+                    <div
+                      className={`w-16 h-16 rounded-full bg-gradient-to-tr ${getAvatarGradient(
+                        player.username
+                      )} flex items-center justify-center text-2xl font-black text-white shadow-md shadow-black/50 group-hover:scale-105 transition-transform`}
+                    >
+                      {player.username.charAt(0).toUpperCase()}
+                    </div>
+
+                    <span className="mt-3 text-sm font-bold text-white group-hover:text-amber-300 transition-colors truncate max-w-full px-1">
+                      {player.username}
+                    </span>
+
+                    <span className="mt-0.5 text-[10px] font-medium text-slate-400">
+                      {loadingAction === `login:${player.id}` ? (
+                        <span className="text-amber-400 animate-pulse">Entering...</span>
+                      ) : player.hasPin ? (
+                        'PIN Required'
+                      ) : (
+                        '1-Tap Play'
+                      )}
+                    </span>
+                  </motion.button>
+                ))}
+
+                {/* + New Player Card in grid */}
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => {
+                    setShowNewPlayer(true);
+                    setErrorMessage(null);
+                    playButtonPop();
+                  }}
+                  disabled={loadingAction !== null}
+                  className="flex flex-col items-center justify-center p-4 bg-slate-950/50 hover:bg-slate-900/70 border-2 border-dashed border-slate-800 hover:border-amber-400/70 rounded-2xl transition-all group text-center cursor-pointer min-h-[140px]"
+                >
+                  <div className="w-16 h-16 rounded-full border-2 border-dashed border-slate-700 group-hover:border-amber-400 flex items-center justify-center text-3xl text-slate-400 group-hover:text-amber-400 transition-colors">
+                    +
+                  </div>
+                  <span className="mt-3 text-sm font-bold text-slate-300 group-hover:text-amber-300 transition-colors">
+                    New Player
+                  </span>
+                  <span className="mt-0.5 text-[10px] text-slate-500">Create profile</span>
+                </motion.button>
+              </div>
+            )}
+
+            <div className="pt-2">
+              <CharacterShowcase initialCategory="SCIENCE" />
+            </div>
+          </div>
+        )
       ) : (
         /* Authenticated Dashboard */
         <div className="flex flex-col gap-4">

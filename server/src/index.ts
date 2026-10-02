@@ -18,7 +18,7 @@ import {
   resignGame,
   spinWheel
 } from './services/gameEngine';
-import { getSession, listPlayers, login, logout, register, RegistrationError } from './services/authService';
+import { getSession, listDirectory, listPlayers, login, logout, register, RegistrationError } from './services/authService';
 import { isGameParticipant, listInvitations, listMatches, respondToInvitation, sendInvitation } from './services/invitationService';
 import {
   createPack,
@@ -61,6 +61,11 @@ app.get('/api/health', (c) => {
 });
 
 // Account authentication and identity.
+app.get('/api/auth/directory', async (c) => {
+  const db = await getDatabase(c.env);
+  return c.json({ players: await listDirectory(db) });
+});
+
 app.post('/api/auth/register', async (c) => {
   try {
     const body = await c.req.json();
@@ -74,13 +79,14 @@ app.post('/api/auth/register', async (c) => {
 
 app.post('/api/auth/login', async (c) => {
   try {
-    const body = await c.req.json<{ email: string; password: string }>();
-    return c.json(await login(await getDatabase(c.env), body.email, body.password));
+    const body = await c.req.json<{ username?: string; email?: string; pin?: string; password?: string }>();
+    const identifier = body?.username || body?.email || '';
+    const secret = body?.pin || body?.password || undefined;
+    return c.json(await login(await getDatabase(c.env), identifier, secret));
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Login failed' }, 401);
   }
 });
-
 function sessionToken(c: Context<{ Bindings: Bindings }>, allowQuery = false): string | undefined {
   const authorization = c.req.header('Authorization');
   if (authorization?.startsWith('Bearer ')) return authorization.slice(7);

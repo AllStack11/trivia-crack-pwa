@@ -1,4 +1,4 @@
-import type { AccountSummary, AuthResponse, RegisterRequest } from '../../../shared/src/index';
+import type { AccountSummary, AuthResponse, DirectoryPlayer, RegisterRequest } from '../../../shared/src/index';
 import type { AppDatabase } from '../db/database';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PBKDF2_ITERATIONS = 210_000;
@@ -73,42 +73,78 @@ async function createSession(db: AppDatabase, userId: string, now = Date.now()):
   return token;
 }
 
+export async function listDirectory(db: AppDatabase): Promise<DirectoryPlayer[]> {
+  const rows = await db.query<{ id: string; username: string; password_hash: string }>(
+    `SELECT u.id, u.username, a.password_hash
+     FROM users u
+     JOIN accounts a ON a.user_id = u.id
+     ORDER BY a.normalized_username ASC, u.id ASC`
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    username: r.username,
+    hasPin: Boolean(r.password_hash && r.password_hash !== 'NONE' && r.password_hash.trim().length > 0)
+  }));
+}
+
 export async function register(db: AppDatabase, input: RegisterRequest): Promise<AuthResponse> {
   const request = input && typeof input === 'object' ? input : ({} as RegisterRequest);
   const username = typeof request.username === 'string' ? request.username.trim() : '';
-  const email = typeof request.email === 'string' ? request.email.trim() : '';
-  const password = typeof request.password === 'string' ? request.password : '';
   if (!username || username.length > 24) throw new RegistrationError('Username must be 1–24 characters', 400);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new RegistrationError('Enter a valid email address', 400);
-  if (password.length < 8) throw new RegistrationError('Password must be at least 8 characters', 400);
-  const normalizedEmail = email.toLowerCase();
+
   const normalizedUsername = username.toLowerCase();
+  let email = typeof request.email === 'string' ? request.email.trim() : '';
+  if (email) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new RegistrationError('Enter a valid email address', 400);
+  } else {
+    email = `${normalizedUsername}@trivia.local`;
+  }
+  const normalizedEmail = email.toLowerCase();
+
+  let passwordHash = '';
+  if (typeof request.pin === 'string' && request.pin.length > 0) {
+    if (!/^\d{4}$/.test(request.pin)) throw new RegistrationError('PIN must be 4 digits', 400);
+    passwordHash = await hashPassword(request.pin);
+  } else if (typeof request.password === 'string' && request.password.length > 0) {
+    if (request.password.length < 8) throw new RegistrationError('Password must be at least 8 characters', 400);
+    passwordHash = await hashPassword(request.password);
+  }
+
   const id = `account_${crypto.randomUUID()}`;
   const now = Date.now();
-  const passwordHash = await hashPassword(password);
   try {
     await db.batch([
       { sql: 'INSERT INTO users (id, username, created_at) VALUES (?, ?, ?)', params: [id, username, now] },
       { sql: 'INSERT INTO accounts (user_id, email, normalized_email, normalized_username, password_hash) VALUES (?, ?, ?, ?, ?)', params: [id, email, normalizedEmail, normalizedUsername, passwordHash] }
     ]);
   } catch (error) {
-    const existingEmail = await db.queryFirst('SELECT user_id FROM accounts WHERE normalized_email = ?', [normalizedEmail]);
-    if (existingEmail) throw new RegistrationError('An account with that email already exists', 409);
     const existingUsername = await db.queryFirst('SELECT user_id FROM accounts WHERE normalized_username = ?', [normalizedUsername]);
     if (existingUsername) throw new RegistrationError('That username is already taken', 409);
+    const existingEmail = await db.queryFirst('SELECT user_id FROM accounts WHERE normalized_email = ?', [normalizedEmail]);
+    if (existingEmail) throw new RegistrationError('An account with that email already exists', 409);
     throw error;
   }
   return { account: { id, username }, token: await createSession(db, id, now) };
 }
 
-export async function login(db: AppDatabase, email: string, password: string): Promise<AuthResponse> {
-  if (typeof email !== 'string' || typeof password !== 'string') throw new Error('Email and password are required');
+export async function login(db: AppDatabase, identifier: string, secret?: string): Promise<AuthResponse> {
+  if (typeof identifier !== 'string' || !identifier.trim()) throw new Error('Player not found');
+  const normalized = identifier.trim().toLowerCase();
   const account = await db.queryFirst<AccountRow>(
     `SELECT a.user_id, a.email, a.password_hash, u.username
-     FROM accounts a JOIN users u ON u.id = a.user_id WHERE a.normalized_email = ?`,
-    [email.trim().toLowerCase()]
+     FROM accounts a JOIN users u ON u.id = a.user_id
+     WHERE a.normalized_username = ? OR a.normalized_email = ?`,
+    [normalized, normalized]
   );
-  if (!account || !(await verifyPassword(password, account.password_hash))) throw new Error('Invalid email or password');
+  if (!account) throw new Error('Player not found');
+
+  const hasSecret = Boolean(account.password_hash && account.password_hash !== 'NONE' && account.password_hash.trim().length > 0);
+  if (hasSecret) {
+    if (!secret || !(await verifyPassword(secret, account.password_hash))) {
+      throw new Error('Incorrect PIN');
+    }
+  }
+
   return { account: { id: account.user_id, username: account.username }, token: await createSession(db, account.user_id) };
 }
 
