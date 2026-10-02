@@ -3,7 +3,7 @@
 A mobile-first Progressive Web App (PWA) clone of Trivia Crack built for friends to play turn-based duels, with 100% free deployment on Cloudflare (Cloudflare Workers + Workers Static Assets + D1 SQLite + Server-Sent Events).
 
 ## Live Production Deployment (Cloudflare)
-- **Frontend PWA (Cloudflare Workers)**: [https://trivia-clash-client.saadmankabir95.workers.dev](https://trivia-clash-client.saadmankabir95.workers.dev)
+- **Frontend PWA (Cloudflare Workers)**: [https://trivia-clash.saadmankabir95.workers.dev](https://trivia-clash.saadmankabir95.workers.dev)
 - **Backend API (Cloudflare Workers)**: [https://trivia-clash-server.saadmankabir95.workers.dev](https://trivia-clash-server.saadmankabir95.workers.dev)
 - **Edge Database (Cloudflare D1)**: `triviaclash-db` (`86030aff-f7e5-4a3d-bdb9-ca2f08a612a3`)
 

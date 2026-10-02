@@ -150,7 +150,7 @@ export async function spinWheel(
     await db.execute(
       `UPDATE games
        SET active_mode = 'CROWN_CHOICE', active_question_json = NULL,
-           last_spin_json = ?, updated_at = ?
+           last_spin_json = ?, last_result_json = NULL, updated_at = ?
        WHERE id = ?`,
       [lastSpinPayload, now, gameId]
     );
@@ -179,7 +179,7 @@ export async function spinWheel(
     await db.execute(
       `UPDATE games
        SET active_mode = 'QUESTION', active_question_json = ?,
-           last_spin_json = ?, updated_at = ?
+           last_spin_json = ?, last_result_json = NULL, updated_at = ?
        WHERE id = ?`,
       [JSON.stringify(storedQuestion), lastSpinPayload, now, gameId]
     );
@@ -284,7 +284,8 @@ export async function chooseCrown(
 
   await db.execute(
     `UPDATE games
-     SET active_mode = 'QUESTION', active_question_json = ?, updated_at = ?
+     SET active_mode = 'QUESTION', active_question_json = ?,
+         last_result_json = NULL, updated_at = ?
      WHERE id = ?`,
     [JSON.stringify(storedQuestion), now, gameId]
   );
@@ -324,7 +325,7 @@ export async function answerQuestion(
   }
 
   const opponentId = game.player1_id === playerId ? game.player2_id : game.player1_id;
-  const isTimeout = timeSpentMs > stored.durationMs + 3000; // 3s latency tolerance
+  const isTimeout = timeSpentMs > stored.durationMs + 10000; // 10s network/animation latency tolerance
   const wasCorrect = !isTimeout && answerIndex === stored.correctIndex;
   const now = Date.now();
 
@@ -501,11 +502,27 @@ export async function answerQuestion(
     }
   }
 
+  const questionSnapshot: ActiveQuestionSync = {
+    id: stored.questionData.id,
+    category: stored.questionData.category,
+    question: stored.questionData.question,
+    imageUrl: stored.questionData.imageUrl,
+    options: stored.shuffledOptions,
+    durationMs: stored.durationMs,
+    startedAt: stored.startedAt,
+    isCrown: stored.isCrown,
+    crownCategory: stored.crownCategory,
+    isSteal: stored.isSteal,
+    targetPlayerId: stored.targetPlayerId,
+    wagerCategory: stored.wagerCategory
+  };
+
   const result: QuestionResult = {
     wasCorrect,
     correctIndex: stored.correctIndex,
     correctAnswer: stored.shuffledOptions[stored.correctIndex],
     selectedOption: answerIndex >= 0 ? stored.shuffledOptions[answerIndex] : undefined,
+    question: questionSnapshot,
     awardedCrown,
     stolenCrown,
     lostCrown,
@@ -654,7 +671,11 @@ export async function getGameStateSync(
   }
 
   let lastResult: QuestionResult | undefined;
-  if (game.last_result_json) {
+  if (
+    game.last_result_json &&
+    game.active_mode !== 'QUESTION' &&
+    game.active_mode !== 'SPINNING'
+  ) {
     try {
       lastResult = JSON.parse(game.last_result_json) as QuestionResult;
     } catch {

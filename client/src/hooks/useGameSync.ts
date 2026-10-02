@@ -74,15 +74,36 @@ export function useGameSync({
         onUnauthorized?.();
       } else if (res.ok) {
         const data = await res.json() as GameStateSync;
-        setGameState(data);
-        if (data.lastResult) setLastResult(data.lastResult);
+        setGameState((prev) => {
+          if (
+            prev &&
+            prev.updatedAt === data.updatedAt &&
+            prev.status === data.status &&
+            prev.mode === data.mode &&
+            prev.currentTurnPlayerId === data.currentTurnPlayerId &&
+            prev.players.p1.crownGauge === data.players.p1.crownGauge &&
+            prev.players.p2?.crownGauge === data.players.p2?.crownGauge
+          ) {
+            return prev;
+          }
+          return data;
+        });
+        setLastResult(data.lastResult);
+        if (data.lastSpin) {
+          setTargetDegrees(data.lastSpin.targetDegrees);
+          setLastSpinSlice(data.lastSpin.slice);
+        }
         setError(null);
       } else {
         const data = await res.json().catch(() => ({})) as { error?: string };
         setError(data.error || 'Could not load this match');
       }
     } catch {
-      setError('Connection disrupted');
+      // Only surface disruption error if game has never loaded yet
+      setGameState((prev) => {
+        if (!prev) setError('Connection disrupted');
+        return prev;
+      });
     } finally { setLoading(false); }
   }, [gameId, sessionToken, authenticatedFetch, onUnauthorized]);
 
@@ -107,7 +128,7 @@ export function useGameSync({
         try {
           const fresh = JSON.parse(event.data) as GameStateSync;
           setGameState(fresh);
-          if (fresh.lastResult) setLastResult(fresh.lastResult);
+          setLastResult(fresh.lastResult);
           if (fresh.lastSpin) { setTargetDegrees(fresh.lastSpin.targetDegrees); setLastSpinSlice(fresh.lastSpin.slice); }
           setLoading(false);
         } catch { /* Ignore malformed sync events. */ }
@@ -123,9 +144,11 @@ export function useGameSync({
       };
     };
     connectSSE();
+    // Active polling (every 2s): Ensures synchronization across ephemeral serverless isolates
+    // where SSE connections may be anchored to an isolate that didn't process the opponent's action.
     const pollInterval = window.setInterval(() => {
-      if (isMounted && (!eventSourceRef.current || eventSourceRef.current.readyState !== EventSource.OPEN)) void refresh();
-    }, 4000);
+      if (isMounted) void refresh();
+    }, 2000);
     return () => {
       isMounted = false;
       window.clearInterval(pollInterval);

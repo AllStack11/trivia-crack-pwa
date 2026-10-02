@@ -6,7 +6,7 @@
     "dev:server": "bun --watch server/src/bunServer.ts",
     "dev:client": "bun run --cwd client dev",
     "build:client": "bun run --cwd client build",
-    "test": "bun test server/tests"
+    "test": "bun test server/tests client/tests"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",

@@ -132,6 +132,7 @@ export interface QuestionResult {
   correctIndex: number;
   correctAnswer: string;
   selectedOption?: string;
+  question?: ActiveQuestionSync;
   awardedCrown?: Category;
   stolenCrown?: Category;
   lostCrown?: Category;

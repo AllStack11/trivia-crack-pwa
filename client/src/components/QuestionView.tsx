@@ -45,15 +45,22 @@ export default function QuestionView({
     };
   }, []);
 
-  // Handle timer countdown
+  // Reset state when a new question ID is displayed
   useEffect(() => {
-    startTimeRef.current = question.startedAt || Date.now();
+    startTimeRef.current = Date.now();
+    setTimeLeftMs(totalDuration);
     hasAnsweredRef.current = Boolean(lastResult);
     if (!lastResult) {
       setSelectedIndex(null);
     }
     setImageLoaded(false);
     setImageError(false);
+  }, [question.id, totalDuration]);
+
+  // Handle timer countdown
+  useEffect(() => {
+    // If already answered or displaying result review, timer should not run
+    if (hasAnsweredRef.current || lastResult) return;
 
     const interval = setInterval(() => {
       if (hasAnsweredRef.current || lastResult) {
@@ -78,7 +85,7 @@ export default function QuestionView({
     }, 100);
 
     return () => clearInterval(interval);
-  }, [question, isMyTurn, onAnswer, totalDuration, lastResult]);
+  }, [question.id, isMyTurn, onAnswer, totalDuration, lastResult]);
 
   // Audio / confetti effects on answer result
   useEffect(() => {

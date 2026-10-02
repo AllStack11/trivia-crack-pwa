@@ -58,6 +58,7 @@ function AppContent() {
     result: QuestionResult;
   } | null>(null);
   const resultReviewTimerRef = useRef<number | undefined>(undefined);
+  const lastReviewedResultKeyRef = useRef<string | null>(null);
 
   // Restore credentials only after the server confirms the account session
   useEffect(() => {
@@ -166,7 +167,6 @@ function AppContent() {
     loading: gameLoading,
     error: gameError,
     targetDegrees,
-    lastResult,
     spin,
     answer,
     chooseCrown,
@@ -194,23 +194,28 @@ function AppContent() {
     }
   }, [gameState, account?.id]);
 
-  // When spectator receives opponent's answer result via SSE, display result review for 3s
+  // When spectator receives opponent's answer result (via SSE or polling), display result review for 3s
   useEffect(() => {
-    if (
-      gameState?.lastResult &&
-      gameState.currentTurnPlayerId !== account?.id &&
-      gameState.activeQuestion
-    ) {
-      setActiveReviewResult({
-        question: gameState.activeQuestion,
-        result: gameState.lastResult,
-      });
-      clearTimeout(resultReviewTimerRef.current);
-      resultReviewTimerRef.current = window.setTimeout(() => {
-        setActiveReviewResult(null);
-      }, 3000);
-    }
-  }, [gameState?.lastResult, gameState?.currentTurnPlayerId, gameState?.activeQuestion, account?.id]);
+    // Only show completed answer review when not in the middle of a question
+    if (!gameState?.lastResult || gameState.mode === 'QUESTION') return;
+
+    const result = gameState.lastResult;
+    const reviewQuestion = result.question;
+    if (!reviewQuestion) return;
+
+    const resultKey = `${reviewQuestion.id}_${result.nextPlayerId}_${result.wasCorrect}_${result.correctIndex}`;
+    if (lastReviewedResultKeyRef.current === resultKey) return;
+
+    lastReviewedResultKeyRef.current = resultKey;
+    setActiveReviewResult({
+      question: reviewQuestion,
+      result: result,
+    });
+    clearTimeout(resultReviewTimerRef.current);
+    resultReviewTimerRef.current = window.setTimeout(() => {
+      setActiveReviewResult(null);
+    }, 3000);
+  }, [gameState?.lastResult, gameState?.mode]);
   useEffect(() => {
     return () => {
       clearTimeout(resultReviewTimerRef.current);
@@ -238,6 +243,7 @@ function AppContent() {
     setIsWheelSpinning(false);
     setLandedCategoryName(null);
     clearTimeout(resultReviewTimerRef.current);
+    lastReviewedResultKeyRef.current = null;
     setActiveReviewResult(null);
     window.history.pushState(null, '', `/game/${encodeURIComponent(gameId)}`);
   };
@@ -258,6 +264,7 @@ function AppContent() {
           setIsWheelSpinning(false);
           setLandedCategoryName(null);
           clearTimeout(resultReviewTimerRef.current);
+          lastReviewedResultKeyRef.current = null;
           setActiveReviewResult(null);
           setView('LOBBY');
           window.history.pushState(null, '', '/');
@@ -270,6 +277,7 @@ function AppContent() {
     setIsWheelSpinning(false);
     setLandedCategoryName(null);
     clearTimeout(resultReviewTimerRef.current);
+    lastReviewedResultKeyRef.current = null;
     setActiveReviewResult(null);
     setView('LOBBY');
     window.history.pushState(null, '', '/');
@@ -279,7 +287,8 @@ function AppContent() {
   const handleSpinStart = async () => {
     if (isWheelSpinning) return;
     setLandedCategoryName(null);
-
+    clearTimeout(resultReviewTimerRef.current);
+    setActiveReviewResult(null);
     const res = await spin();
     if (res) {
       lastAnimatedSpinRef.current = res.targetDegrees;
@@ -308,6 +317,8 @@ function AppContent() {
   ) => {
     const res = await answer(targetQuestion.id, ansIdx, timeMs);
     if (res) {
+      const resultKey = `${targetQuestion.id}_${res.nextPlayerId}_${res.wasCorrect}_${res.correctIndex}`;
+      lastReviewedResultKeyRef.current = resultKey;
       setActiveReviewResult({
         question: targetQuestion,
         result: res,
@@ -564,7 +575,7 @@ function AppContent() {
                           }
                         }}
                         lastResult={
-                          activeReviewResult ? activeReviewResult.result : lastResult
+                          activeReviewResult ? activeReviewResult.result : undefined
                         }
                         onDismissResult={() => {
                           clearTimeout(resultReviewTimerRef.current);
