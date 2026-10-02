@@ -1,7 +1,7 @@
 import type { AccountSummary, AuthResponse, DirectoryPlayer, RegisterRequest } from '../../../shared/src/index';
 import type { AppDatabase } from '../db/database';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const PBKDF2_ITERATIONS = 210_000;
+const PBKDF2_ITERATIONS = 100_000;
 const encoder = new TextEncoder();
 
 export class RegistrationError extends Error {

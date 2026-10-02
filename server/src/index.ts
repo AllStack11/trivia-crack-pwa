@@ -71,6 +71,7 @@ app.post('/api/auth/register', async (c) => {
     const body = await c.req.json();
     return c.json(await register(await getDatabase(c.env), body), 201);
   } catch (error) {
+    console.error('Registration failed:', error);
     if (error instanceof RegistrationError) return c.json({ error: error.message }, error.status);
     if (error instanceof SyntaxError) return c.json({ error: 'Invalid JSON body' }, 400);
     return c.json({ error: 'Registration failed' }, 500);
