@@ -47,6 +47,7 @@ Use the local Bun SQLite database only when intentionally running the local serv
 - `GET /api/games` returns matches for the authenticated account only. Game state, SSE, and actions return not-found for nonparticipants.
 - Public question-pack APIs are separate from account/match authorization. Do not accidentally make game routes public while editing shared routing code.
 - Keep `SCHEMA_SQL`, `schema.sql`, and the complete fresh D1 migration aligned. The migration chain must initialize an empty database.
+- Keep the revision trigger condition in a `WHEN` clause. A nested `CASE ... END` in its body passed local SQLite but failed remote D1 migration parsing; verify trigger edits against disposable D1 before deployment.
 - Every game mutation checks its persisted revision and commits all answer claims, logs, crowns and state in one batch/transaction. `game_mutation_guards` rejects stale revisions before any writes.
 - SSE connections read committed revisions from D1 within their own request; never store stream writers in module-level maps. Recheck sessions periodically and close completed streams.
 - Client snapshots must match the active game/session generation and advance the revision. Delayed REST/SSE responses must not roll state backward or cross match navigation.

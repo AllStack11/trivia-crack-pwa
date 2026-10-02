@@ -37,10 +37,9 @@ CREATE TABLE IF NOT EXISTS game_mutation_guards (
 );
 CREATE TRIGGER IF NOT EXISTS validate_game_mutation
 BEFORE INSERT ON game_mutation_guards
+WHEN NOT EXISTS (SELECT 1 FROM games WHERE id = NEW.game_id AND revision = NEW.expected_revision)
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1 FROM games WHERE id = NEW.game_id AND revision = NEW.expected_revision
-  ) THEN RAISE(ABORT, 'Game changed; refresh and try again') END;
+  SELECT RAISE(ABORT, 'Game changed, refresh and try again');
 END;
 
 CREATE TABLE IF NOT EXISTS game_crowns (
