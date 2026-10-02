@@ -104,3 +104,9 @@ The migration baseline targets a fresh database; it does not upgrade older deplo
 Game actions use monotonic revisions and commit answer claims, scores, crowns and game state atomically. Question deadlines are persisted by the server: ordinary questions include the 4.4-second wheel animation and 0.9-second landing display before their 20-second timer; crown questions start immediately. The server allows 2 seconds for delivery and resolves expired questions on match reads/SSE, even if the player disconnects. Reloading preserves the deadline. If all question sources are exhausted, content can repeat with a new answerable occurrence ID.
 
 Session tokens remain in the client account storage and bearer headers. SSE does not accept query-string session tokens. Request logs omit query strings and headers. Client synchronization ignores older revisions and responses from previous matches or sessions; failed answer requests unlock the options for retry.
+
+### Illustrated mobile interface
+
+The client uses original category mascots and an illustrated game world in `client/public/art/`. Artwork is optimized as WebP with transparency preserved for mascots. The home screen, category gallery, questions, crowns, and spinning wheel share the same characters. Mascot idle animations respect reduced-motion preferences; wheel timing continues to follow the server game contract. The mobile dock provides Play, Friends, Heroes, and Packs. Profile creation and optional PIN entry use bottom sheets.
+
+On Windows, if Vite's bundled config loader cannot load native dependencies, use `bun run --cwd client vite --configLoader native` for development or `bun run --cwd client vite build --configLoader native` after `bun run --cwd client tsc --noEmit` for a build.

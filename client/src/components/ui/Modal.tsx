@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useId } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { playButtonPop } from '../../utils/audio';
 
 export interface ModalProps {
@@ -29,6 +30,10 @@ export default function Modal({
   maxWidth = 'md',
   className = ''
 }: ModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  useDialogFocus(isOpen, panelRef);
+
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -53,6 +58,7 @@ export default function Modal({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={onClose}
+            aria-hidden="true"
             className="fixed inset-0 bg-black/75 backdrop-blur-md"
           />
 
@@ -62,6 +68,11 @@ export default function Modal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 12 }}
             transition={{ type: 'spring', stiffness: 450, damping: 28 }}
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={title ? titleId : undefined}
+            tabIndex={-1}
             className={`relative z-10 w-full ${MAX_WIDTHS[maxWidth]} rounded-3xl bg-slate-900/95 border border-slate-700/80 p-5 sm:p-6 shadow-2xl shadow-black/80 flex flex-col gap-4 overflow-hidden ${className}`}
           >
             {/* Top Sheen */}
@@ -77,7 +88,7 @@ export default function Modal({
                     </div>
                   )}
                   <div>
-                    {title && <h3 className="text-lg font-black text-white tracking-tight leading-tight">{title}</h3>}
+                    {title && <h3 id={titleId} className="text-lg font-black text-white tracking-tight leading-tight">{title}</h3>}
                     {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
                   </div>
                 </div>

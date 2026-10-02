@@ -191,7 +191,7 @@ export default function QuestionView({
       <div className="flex flex-col w-full rounded-3xl bg-slate-900/95 border border-slate-700/80 shadow-2xl overflow-hidden backdrop-blur-xl">
         {/* Category Header Banner with Mascot & Timer */}
         <div
-          className="relative px-4 py-3.5 text-white flex items-center justify-between shadow-md"
+          className="question-host relative px-4 py-3.5 text-white flex items-center justify-between shadow-md"
           style={{
             background: `linear-gradient(135deg, ${categoryInfo.color}EE, ${categoryInfo.accentColor}EE)`,
           }}
@@ -201,7 +201,7 @@ export default function QuestionView({
             <div className="relative">
               <CategoryCharacter
                 category={question.category}
-                size="sm"
+                size="md"
                 mood={hostMood}
                 showCrown={Boolean(question.isCrown)}
                 className="shrink-0 drop-shadow-lg"
@@ -298,7 +298,7 @@ export default function QuestionView({
               let cardStyles =
                 'bg-slate-800/80 text-slate-200 border-slate-700/70 hover:border-slate-500 shadow-md';
               let badgeStyles =
-                'bg-gradient-to-br from-slate-700 to-slate-800 text-slate-200 border border-slate-600';
+                'bg-emerald-100 text-slate-800 border border-emerald-200';
 
               if (lastResult) {
                 const isCorrectOption = idx === lastResult.correctIndex;

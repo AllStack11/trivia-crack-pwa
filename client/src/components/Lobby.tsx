@@ -35,6 +35,8 @@ import { useToast } from './ui/Toast';
 import BottomSheet from './ui/BottomSheet';
 import Keypad from './ui/Keypad';
 import BottomNav, { type LobbyTab } from './navigation/BottomNav';
+import CategoryCharacter from './characters/CategoryCharacter';
+import GameWelcome from './characters/GameWelcome';
 import CharacterShowcase from './characters/CharacterShowcase';
 
 
@@ -135,7 +137,6 @@ export default function Lobby({
   const [showNewPlayerSheet, setShowNewPlayerSheet] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [newPin, setNewPin] = useState('');
-  const [selectedAvatarColorIndex, setSelectedAvatarColorIndex] = useState(0);
 
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -431,23 +432,8 @@ export default function Lobby({
       {!account ? (
         /* ================= UNAUTHENTICATED HERO SELECTOR ================= */
         <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-6 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)]">
-          <div className="text-center pt-2">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.3 }}
-              className="inline-flex p-3 rounded-3xl bg-gradient-to-tr from-amber-400/20 via-indigo-500/20 to-purple-500/20 border border-amber-400/30 mb-3 shadow-lg"
-            >
-              <Sparkles className="w-8 h-8 text-amber-400" />
-            </motion.div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Who's Playing?
-            </h2>
-            <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">
-              Select your character to duel friends or create a new profile in seconds.
-            </p>
-          </div>
-
+          <GameWelcome />
+          <div className="text-center"><h2 className="text-xl font-black">Who's playing?</h2><p className="text-sm text-slate-500">Pick your profile and let the fun begin.</p></div>
           {/* Player Grid */}
           {directoryLoading && directory.length === 0 ? (
             <div className="py-12 flex flex-col items-center justify-center gap-2">
@@ -501,7 +487,7 @@ export default function Lobby({
                     player.username
                   )} flex items-center justify-center text-xl font-black text-white shadow-lg ring-2 ring-slate-800 group-hover:scale-105 transition-transform mb-2.5`}
                 >
-                  {player.username.slice(0, 2).toUpperCase()}
+                  <CategoryCharacter category="GEOGRAPHY" size="md" mood="happy" />
                 </div>
 
                 <span className="text-xs font-extrabold text-white group-hover:text-amber-300 transition-colors truncate max-w-full px-1">
@@ -544,6 +530,8 @@ export default function Lobby({
             {/* TAB 1: DUELS */}
             {activeTab === 'matches' && (
               <div className="flex flex-col gap-3">
+                <GameWelcome compact />
+                <button type="button" className="play-cta" onClick={() => { playButtonPop(); setActiveTab('players'); }}><Swords size={22} /> Challenge a friend <ChevronRight size={22} /></button>
                 <div className="flex items-center justify-between pt-1">
                   <h3 className="text-xs uppercase font-extrabold text-slate-400 tracking-wider flex items-center gap-1.5">
                     <Swords className="w-3.5 h-3.5 text-indigo-400" />
@@ -566,7 +554,7 @@ export default function Lobby({
                     </div>
                     <h4 className="text-sm font-extrabold text-white">No duels in progress</h4>
                     <p className="text-xs text-slate-400 mt-1 max-w-xs leading-relaxed">
-                      Swipe to "Opponents" to challenge someone and spin the wheel for crowns!
+                      Tap "Friends" to challenge someone and spin the wheel for crowns!
                     </p>
                     <button
                       type="button"
@@ -591,6 +579,10 @@ export default function Lobby({
                       return (
                         <motion.div
                           key={match.gameId}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Open match against ${match.opponent.username}`}
+                          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenGame(match.gameId); } }}
                           whileHover={{ scale: 1.01 }}
                           whileTap={{ scale: 0.98 }}
                           onClick={() => {
@@ -599,7 +591,7 @@ export default function Lobby({
                             onOpenGame(match.gameId);
                           }}
                           className={`
-                            relative overflow-hidden rounded-3xl p-4 border cursor-pointer transition-all shadow-xl
+                            match-card relative overflow-hidden rounded-3xl p-4 border cursor-pointer transition-all shadow-xl
                             ${
                               isMyTurn
                                 ? 'bg-gradient-to-r from-indigo-950/90 via-slate-900/95 to-slate-900/95 border-amber-400/80 shadow-indigo-950/40 ring-1 ring-amber-400/30'
@@ -744,7 +736,7 @@ export default function Lobby({
                               player.username
                             )} flex items-center justify-center font-bold text-white text-xs shadow-md ring-1 ring-slate-700 flex-shrink-0`}
                           >
-                            {player.username.slice(0, 2).toUpperCase()}
+                            <CategoryCharacter category="GEOGRAPHY" size="md" mood="happy" />
                           </div>
                           <span className="text-xs font-bold text-white truncate">
                             {player.username}
@@ -818,15 +810,6 @@ export default function Lobby({
                     return (
                       <div
                         key={pack.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => togglePack(pack.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            togglePack(pack.id);
-                          }
-                        }}
                         className={`
                           p-3.5 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer
                           ${
@@ -836,12 +819,10 @@ export default function Lobby({
                           }
                         `}
                       >
-                        <div className="min-w-0">
-                          <h4 className="text-xs font-bold truncate">{pack.title}</h4>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            {pack.questionCount} Questions
-                          </p>
-                        </div>
+                        <button type="button" onClick={() => togglePack(pack.id)} aria-pressed={isSelected} className="flex-1 min-w-0 text-left">
+                          <span className="block text-sm font-bold truncate">{pack.title}</span>
+                          <span className="block text-xs text-slate-400 mt-0.5">{pack.questionCount} Questions</span>
+                        </button>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <button
                             type="button"
@@ -850,8 +831,9 @@ export default function Lobby({
                               void handleExpandPack(pack.id, pack.title);
                             }}
                             disabled={expandingPackId === pack.id}
+                            aria-label={`Add 30 questions to ${pack.title}`}
                             title="Fetch 30 fresh questions from free trivia APIs"
-                            className="p-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-emerald-400 border border-slate-700/60 transition-all active:scale-95 disabled:opacity-50"
+                            className="w-11 p-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-emerald-400 border border-slate-700/60 transition-all active:scale-95 disabled:opacity-50"
                           >
                             {expandingPackId === pack.id ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
@@ -884,7 +866,7 @@ export default function Lobby({
                   className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 text-white font-bold text-xs shadow-xl shadow-indigo-950/50 active:scale-98 transition-all flex items-center justify-center gap-2 mt-2"
                 >
                   <BookOpen className="w-4 h-4" />
-                  <span>Open Custom Pack Studio & JSON Importer</span>
+                  <span>Create a question pack</span>
                 </button>
               </div>
             )}
@@ -948,41 +930,17 @@ export default function Lobby({
           setNewPin('');
         }}
         title="Create Player Profile"
-        subtitle="Choose a moniker and customize your avatar"
+        subtitle="Choose your player name and jump in"
         icon={<UserPlus className="w-5 h-5 text-indigo-400" />}
       >
         <form onSubmit={handleCreatePlayer} className="flex flex-col gap-4 py-2">
-          {/* Avatar Color Selector Carousel */}
-          <div>
-            <label className="text-xs font-bold text-slate-300 block mb-2">
-              Choose Avatar Color
-            </label>
-            <div className="flex items-center justify-center gap-2.5 py-1">
-              {AVATAR_GRADIENTS.slice(0, 6).map((grad, idx) => (
-                <button
-                  key={grad}
-                  type="button"
-                  onClick={() => {
-                    playButtonPop();
-                    setSelectedAvatarColorIndex(idx);
-                  }}
-                  className={`
-                    w-11 h-11 rounded-2xl bg-gradient-to-tr ${grad} flex items-center justify-center text-white font-bold text-sm shadow-md transition-transform
-                    ${selectedAvatarColorIndex === idx ? 'scale-110 ring-4 ring-white/60' : 'opacity-70 hover:opacity-100'}
-                  `}
-                >
-                  {selectedAvatarColorIndex === idx && <Check className="w-5 h-5 stroke-[3]" />}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Username Input */}
           <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1.5">
-              Player Moniker / Username
+            <label htmlFor="new-player-name" className="text-xs font-bold text-slate-300 block mb-1.5">
+              Player name
             </label>
             <input
+              id="new-player-name"
               required
               maxLength={24}
               value={newUsername}
@@ -997,12 +955,14 @@ export default function Lobby({
           {/* Optional PIN Field */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-slate-300">
+              <label htmlFor="new-player-pin" className="text-xs font-bold text-slate-300">
                 Security PIN (Optional)
               </label>
               <span className="text-[10px] text-slate-500">4 digits</span>
             </div>
             <input
+              id="new-player-pin"
+              autoComplete="new-password"
               type="password"
               inputMode="numeric"
               pattern="\d*"

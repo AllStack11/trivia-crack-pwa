@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef, useId } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, AlertCircle, Info, X, AlertTriangle } from 'lucide-react';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { playButtonPop, triggerHaptic } from '../../utils/audio';
 
 export type ToastType = 'info' | 'success' | 'error';
@@ -53,6 +54,19 @@ export function promptConfirm(options: ConfirmDialogOptions): void {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogOptions | null>(null);
+
+  const confirmRef = useRef<HTMLDivElement>(null);
+  const confirmTitleId = useId();
+  const confirmMessageId = useId();
+  useDialogFocus(Boolean(confirmDialog), confirmRef);
+  useEffect(() => {
+    if (!confirmDialog) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { confirmDialog.onCancel?.(); setConfirmDialog(null); }
+    };
+    document.addEventListener('keydown', close);
+    return () => document.removeEventListener('keydown', close);
+  }, [confirmDialog]);
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -142,7 +156,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {/* Confirm Bottom Sheet Dialog */}
       <AnimatePresence>
         {confirmDialog && (
-          <div className="fixed inset-0 z-[110] flex flex-col justify-end pointer-events-none">
+          <div className="trivia-app fixed inset-0 z-[110] flex flex-col justify-end pointer-events-none">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -152,6 +166,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 confirmDialog.onCancel?.();
                 setConfirmDialog(null);
               }}
+              aria-hidden="true"
               className="fixed inset-0 bg-black/60 backdrop-blur-md pointer-events-auto"
             />
 
@@ -160,6 +175,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+              ref={confirmRef}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby={confirmTitleId}
+              aria-describedby={confirmMessageId}
+              tabIndex={-1}
               className="
                 relative z-10 w-full max-w-md mx-auto pointer-events-auto
                 bg-slate-900/95 backdrop-blur-2xl border-t border-slate-700/80
@@ -178,12 +199,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 >
                   <AlertTriangle className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-bold text-white tracking-tight">
+                <h3 id={confirmTitleId} className="text-lg font-bold text-white tracking-tight">
                   {confirmDialog.title}
                 </h3>
               </div>
 
-              <p className="text-sm text-slate-300 mb-6 leading-relaxed">
+              <p id={confirmMessageId} className="text-sm text-slate-300 mb-6 leading-relaxed">
                 {confirmDialog.message}
               </p>
 

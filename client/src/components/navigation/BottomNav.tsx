@@ -29,14 +29,14 @@ export default function BottomNav({
   const items: NavItem[] = [
     {
       id: 'matches',
-      label: 'Duels',
+      label: 'Play',
       icon: Swords,
       badgeCount: myTurnCount,
       badgeHighlight: myTurnCount > 0,
     },
     {
       id: 'players',
-      label: 'Opponents',
+      label: 'Friends',
       icon: Users,
       badgeCount: invitationCount,
       badgeHighlight: invitationCount > 0,
@@ -55,7 +55,7 @@ export default function BottomNav({
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 bg-slate-950/90 backdrop-blur-xl border-t border-slate-800/80 pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] pt-1.5 px-3 select-none"
+      className="game-dock fixed inset-x-0 bottom-0 z-40 bg-slate-950/90 backdrop-blur-xl border-t border-slate-800/80 pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] pt-1.5 px-3 select-none"
       role="navigation"
       aria-label="Bottom Navigation"
     >

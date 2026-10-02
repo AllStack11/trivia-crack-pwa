@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, type PanInfo } from 'motion/react';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { X } from 'lucide-react';
 import { playButtonPop } from '../../utils/audio';
 
@@ -27,6 +28,9 @@ export default function BottomSheet({
   className = '',
   showCloseButton = true,
 }: BottomSheetProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const subtitleId = useId();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -45,6 +49,8 @@ export default function BottomSheet({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  useDialogFocus(isOpen && mounted, panelRef);
+
   const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (info.offset.y > 100 || info.velocity.y > 400) {
       playButtonPop();
@@ -55,7 +61,7 @@ export default function BottomSheet({
   const content = (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+        <div className="trivia-app fixed inset-0 z-50 flex flex-col justify-end">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -88,6 +94,10 @@ export default function BottomSheet({
               ${height === 'full' ? 'h-[92vh]' : 'max-h-[90vh]'}
               ${className}
             `.trim()}
+            ref={panelRef}
+            tabIndex={-1}
+            aria-labelledby={title ? titleId : undefined}
+            aria-describedby={subtitle ? subtitleId : undefined}
             role="dialog"
             aria-modal="true"
           >
@@ -107,12 +117,12 @@ export default function BottomSheet({
                   )}
                   <div className="min-w-0">
                     {title && (
-                      <h3 className="text-lg font-bold text-white tracking-tight truncate">
+                      <h3 id={titleId} className="text-lg font-bold text-white tracking-tight truncate">
                         {title}
                       </h3>
                     )}
                     {subtitle && (
-                      <p className="text-xs text-slate-400 truncate mt-0.5">
+                      <p id={subtitleId} className="text-xs text-slate-400 truncate mt-0.5">
                         {subtitle}
                       </p>
                     )}

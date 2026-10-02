@@ -30,7 +30,7 @@ export default function CrownBar({ state, myPlayerId }: CrownBarProps) {
 
   const renderPlayerCrowns = (player: PlayerState) => {
     return (
-      <div className="flex items-center gap-1 sm:gap-1.5">
+      <div className="flex items-center justify-between gap-0.5">
         {CROWN_CATEGORIES.map((category) => {
           const isUnlocked = player.crowns.includes(category);
           const catInfo = CATEGORIES[category];
@@ -52,15 +52,15 @@ export default function CrownBar({ state, myPlayerId }: CrownBarProps) {
                     size="xs"
                     mood="celebrating"
                     showCrown
-                    className="drop-shadow-sm"
+                    className="!w-5 !h-6 drop-shadow-sm"
                   />
                 </motion.div>
               ) : (
                 <div
-                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] bg-slate-900/90 border border-slate-700/60 opacity-30 grayscale transition-all"
+                  className="w-5 h-6 rounded-full flex items-center justify-center text-[10px] bg-slate-900/90 border border-slate-700/60 opacity-50 grayscale transition-all"
                   style={{ borderColor: `${catInfo.color}40` }}
                 >
-                  <span>{catInfo.characterName.charAt(0)}</span>
+                  <CategoryCharacter category={category} size="xs" className="!w-5 !h-6" />
                 </div>
               )}
             </div>

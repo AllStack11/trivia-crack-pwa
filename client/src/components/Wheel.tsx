@@ -42,6 +42,7 @@ export default function Wheel({
   onSpinStart,
   onSpinComplete
 }: WheelProps) {
+  const mascotImages = useRef<Partial<Record<Category, HTMLImageElement>>>({});
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const currentRotationRef = useRef<number>(0);
@@ -80,8 +81,8 @@ export default function Wheel({
     ctx.save();
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius + 10, 0, 2 * Math.PI);
-    ctx.fillStyle = '#060A14';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillStyle = '#fffdf2';
+    ctx.shadowColor = 'rgba(35, 86, 83, 0.25)';
     ctx.shadowBlur = 24;
     ctx.shadowOffsetY = 6;
     ctx.fill();
@@ -151,7 +152,13 @@ export default function Wheel({
       ctx.font = `${iconSize}px sans-serif`;
       ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
       ctx.shadowBlur = 4;
-      ctx.fillText(config.icon, iconPos, 0);
+      const mascot = config.slice !== 'CROWN' ? mascotImages.current[config.slice] : undefined;
+      if (mascot?.complete && mascot.naturalWidth) {
+        const artSize = radius * .40;
+        ctx.drawImage(mascot, iconPos - artSize / 2 - 9, -artSize / 2, artSize, artSize);
+      } else {
+        ctx.fillText(config.icon, iconPos, 0);
+      }
 
       // Draw Label centered in clear wedge band
       ctx.fillStyle = '#FFFFFF';
@@ -229,7 +236,7 @@ export default function Wheel({
     ctx.textBaseline = 'middle';
     ctx.fillStyle = canSpin && !isSpinning ? '#FFFFFF' : '#94A3B8';
     ctx.font = `900 ${spinFontSize}px system-ui, -apple-system, sans-serif`;
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+    ctx.shadowColor = 'rgba(35, 86, 83, 0.25)';
     ctx.shadowBlur = 4;
     ctx.fillText('SPIN', centerX, centerY);
     ctx.restore();
@@ -319,6 +326,18 @@ export default function Wheel({
       }
     };
   }, [isSpinning, targetDegrees, drawWheel, onSpinComplete]);
+
+  useEffect(() => {
+    let active = true;
+    for (const config of SLICE_CONFIGS) {
+      if (config.slice === 'CROWN') continue;
+      const image = new Image();
+      mascotImages.current[config.slice] = image;
+      image.onload = () => { if (active) drawWheel(currentRotationRef.current); };
+      image.src = `/art/${config.slice.toLowerCase()}.webp`;
+    }
+    return () => { active = false; };
+  }, [drawWheel]);
 
   const handleCenterClick = useCallback(() => {
     if (!canSpin || isSpinning) return;

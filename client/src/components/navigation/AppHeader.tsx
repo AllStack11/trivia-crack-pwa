@@ -54,7 +54,7 @@ export default function AppHeader({
   const isLobby = currentView === 'LOBBY';
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-slate-950/85 backdrop-blur-xl border-b border-slate-800/80 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] pb-2.5 px-4">
+    <header className="game-header sticky top-0 z-40 w-full bg-slate-950/85 backdrop-blur-xl border-b border-slate-800/80 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] pb-2.5 px-4">
       <div className="max-w-lg mx-auto flex items-center justify-between gap-2">
         {/* Left Side: Back button or User Avatar / Logo */}
         <div className="flex items-center gap-2.5 min-w-0">
@@ -116,10 +116,10 @@ export default function AppHeader({
               </h1>
             ) : (
               <div className="flex items-center gap-1.5">
-                {isLobby && (
+                {isLobby && !account && (
                   <Crown className="w-4 h-4 text-amber-400 fill-amber-400 sm:hidden" />
                 )}
-                <span className="text-sm font-black tracking-wider bg-gradient-to-r from-amber-400 via-indigo-300 to-indigo-400 bg-clip-text text-transparent">
+                <span className="text-sm font-black tracking-wider game-wordmark">
                   TRIVIA CLASH
                 </span>
               </div>
@@ -158,7 +158,7 @@ export default function AppHeader({
                 onInstallApp();
               }}
               title="Install App"
-              className="p-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-900/30 border border-indigo-400/40 animate-pulse"
+              className="hidden sm:flex p-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-900/30 border border-indigo-400/40 animate-pulse"
               aria-label="Install App"
             >
               <Download className="w-4 h-4" />
@@ -176,7 +176,8 @@ export default function AppHeader({
               }}
               title={muted ? 'Unmute Audio' : 'Mute Audio'}
               className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-slate-700/60 shadow-sm"
-              aria-label="Toggle Sound"
+              aria-label={muted ? "Unmute sound" : "Mute sound"}
+              aria-pressed={muted}
             >
               {muted ? (
                 <VolumeX className="w-4 h-4 text-rose-400" />

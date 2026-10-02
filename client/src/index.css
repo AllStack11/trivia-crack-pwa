@@ -61,3 +61,103 @@ body {
 .animate-spin-slow {
   animation: spinSlow 12s linear infinite;
 }
+/* Illustrated mobile game theme. Status and answer feedback retain their colors. */
+:root { color-scheme: light; }
+body { background: #c5eee8; font-family: 'Trebuchet MS', 'Arial Rounded MT Bold', system-ui, sans-serif; }
+.trivia-app { color: #24495a; }
+.game-world { position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: #c5eee8; }
+.game-world-art { position: absolute; inset: 0; background: url('/art/world.webp') center bottom / cover no-repeat; }
+.category-wash { position: absolute; inset: 0; opacity: .09; transition: background 1s; }
+.trivia-app [class*="bg-slate-9"], .trivia-app [class*="bg-slate-8"], .trivia-app [class*="bg-slate-7"] { background-color: #fffdf5; }
+.trivia-app [class*="border-slate-"] { border-color: #d1e1de; }
+.trivia-app [class*="text-slate-"], .trivia-app .text-white { color: #24495a; }
+.trivia-app [class*="text-slate-4"], .trivia-app [class*="text-slate-5"] { color: #54717c; }
+.trivia-app [class*="bg-gradient-"] .text-white,
+.trivia-app button[class*="bg-indigo-"], .trivia-app button[class*="bg-emerald-"],
+.trivia-app button[class*="bg-gradient-"] { color: white; }
+.trivia-app [class*="bg-indigo-950"] { background: #e1f0ff; color: #24495a; }
+.trivia-app [class*="text-indigo-3"], .trivia-app [class*="text-amber-3"], .trivia-app [class*="text-amber-2"] { color: #936113; }
+.trivia-app input, .trivia-app textarea { user-select: text; color: #24495a; background: white; font-size: 16px; }
+.trivia-app button { min-height: 44px; touch-action: manipulation; }
+.trivia-app button:focus-visible, .trivia-app [role="button"]:focus-visible { outline: 3px solid #166dad; outline-offset: 3px; }
+.trivia-app [class*="shadow-"] { --tw-shadow-color: #386e7020; }
+.game-header { background: #fffdf5f2 !important; border-bottom: 3px solid #a4d9d4 !important; backdrop-filter: blur(12px); }
+.game-header button { width: 44px; padding: 10px; border-radius: 16px; background: #edf7f4 !important; border: 1px solid #cde5df; box-shadow: 0 3px 0 #cde5df; }
+.game-wordmark { color: #21687a; letter-spacing: -.5px; font-size: 18px; text-shadow: 0 2px white; }
+.game-dock { background: #fffdf5f5 !important; border-top: 3px solid #a4d9d4 !important; box-shadow: 0 -8px 30px #39757015; }
+.game-dock button { min-height: 58px; }
+.game-dock button[aria-current="page"] { background: #d8f2e6; color: #127553; box-shadow: inset 0 -3px #a7d8c3; }
+.game-dock button[aria-current="page"] span, .game-dock button[aria-current="page"] svg { color: #127553; }
+.game-welcome { position: relative; isolation: isolate; min-height: 310px; border: 3px solid #fffef1; border-radius: 32px; padding: 22px 22px 16px; background: linear-gradient(135deg,#fffce9 0%,#e1f7e9 58%,#b7e9dd 100%); box-shadow: 0 6px 0 #80bcb340, 0 14px 30px #326c6915; overflow: hidden; }
+.welcome-kicker { display: flex; align-items: center; gap: 6px; color: #63826d; font-size: 10px; font-weight: 900; letter-spacing: 1px; }
+.game-welcome h2 { margin: 14px 0 8px; font-size: clamp(30px,8vw,40px); font-weight: 1000; line-height: .98; letter-spacing: -1.7px; color: #285652; position: relative; z-index: 2; }
+.game-welcome h2 span { color: #179875; }
+.game-welcome p { font-size: 12px; font-weight: 700; color: #53756c; max-width: 160px; }
+.mascot-party { position: relative; height: 144px; margin-top: -10px; }
+.party-side { position: absolute; left: 2%; bottom: -3px; transform: rotate(-10deg); }
+.party-lead { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); }
+.party-right { position: absolute; right: -15px; bottom: -6px; transform: rotate(9deg); }
+.category-confetti { display: flex; gap: 4px; justify-content: center; position: relative; z-index: 3; margin-top: 6px; }
+.category-confetti span { font-size: 9px; font-weight: 900; border-radius: 12px; padding: 5px 7px; color: #fff; background: #ec6d68; }
+.category-confetti span:nth-child(2) { background: #259774; }
+.category-confetti span:nth-child(3) { background: #e58a32; }
+.category-confetti span:nth-child(4) { background: #d95796; }
+.category-confetti span:nth-child(5) { background: #398bbb; }
+.category-confetti span:nth-child(6) { background: #aa831c; }
+.game-welcome.compact { min-height: 250px; }
+.compact .mascot-party { height: 96px; }
+.compact .party-lead { width: 145px; height: 145px; left: 65%; }
+.compact .party-right { width: 105px; height: 105px; }
+.compact .party-side { width: 85px; height: 85px; }
+.play-cta { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 18px; color: white !important; font-weight: 900; font-size: 17px; background: linear-gradient(#62c859,#35a746); border: 2px solid #eefec9; border-radius: 22px; box-shadow: 0 5px 0 #25883a, 0 8px 18px #308f3030; margin: 4px 0 12px; }
+.play-cta:active { transform: translateY(3px); box-shadow: 0 2px 0 #25883a; }
+@media (min-width: 700px) { .game-world-art { background-size: auto 100%; } }
+@media (max-width: 360px) { .game-wordmark { font-size: 14px; } .game-header { padding-inline: 10px; } .game-header button { width: 40px; min-height: 40px; } .category-confetti span { padding-inline: 5px; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+
+.game-welcome { min-height: 350px; flex-shrink: 0; }
+.game-welcome p { max-width: none; position: relative; z-index: 2; }
+.game-welcome.compact { min-height: 280px; }
+.category-confetti { margin-top: 12px; }
+
+.champion-stage { background: linear-gradient(135deg,#fff9df,#d8f4e5) !important; }
+.trivia-app button[class*="bg-rose-7"], .trivia-app button[class*="bg-red-"], .trivia-app button[class*="bg-indigo-6"], .trivia-app button[class*="bg-emerald-6"] { color: white; }
+.trivia-app [class*="bg-gradient-"] [class*="text-slate-"] { color: inherit; }
+
+.game-wordmark { white-space: nowrap; font-size: 16px; }
+@media (max-width: 440px) { .game-header button { width: 40px; min-height: 44px; } .game-header { padding-inline: 12px; } }
+
+.question-host .text-white { color: white; }
+.question-host [class*="bg-black/"] { background: #fffdf5; }
+.question-host [class*="text-emerald-"] { color: #147452; }
+.question-host [class*="text-rose-"] { color: #b82d4e; }
+
+.trivia-app [class*="bg-rose-950"] { background: #fff0f4; }
+
+/* Audit fixes: readable cards, feedback, and buttons on the illustrated world. */
+.trivia-app .match-card { background: #fffdf5; background-image: none; opacity: 1; }
+.trivia-app .match-card .text-white { color: #24495a; }
+.trivia-app .match-card [class*="text-amber-4"] { color: #80600b; }
+.trivia-app .question-host, .trivia-app .question-host .text-white { color: white; }
+.trivia-app .question-host [class*="bg-black/"] { background: #fffdf5; }
+.trivia-app .question-host [class*="text-emerald-"] { color: #147452; }
+.trivia-app .question-host [class*="text-amber-"] { color: #8b5b13; }
+.trivia-app .question-host [class*="text-rose-"] { color: #b82d4e; }
+.trivia-app button[class*="from-amber-4"] { color: #563b09; }
+.trivia-app button[class*="bg-emerald-6"] .text-white,
+.trivia-app button[class*="bg-rose-7"] .text-white,
+.trivia-app button[class*="bg-indigo-6"] .text-white { color: white; }
+.play-cta { background: linear-gradient(#2f9948,#207f38); }
+.mascot-party { margin-top: 4px; }
+.compact .party-lead { width: 130px; height: 130px; }
+.category-confetti span:nth-child(1) { background: #b84240; }
+.category-confetti span:nth-child(2) { background: #197b5d; }
+.category-confetti span:nth-child(3) { background: #a85c17; }
+.category-confetti span:nth-child(4) { background: #ad3772; }
+.category-confetti span:nth-child(5) { background: #286f9a; }
+.category-confetti span:nth-child(6) { background: #856511; }
+@media (max-width: 360px) {
+  .game-wordmark { font-size: 13px; }
+  .game-header button { width: 36px; min-height: 44px; }
+  .game-welcome { padding-inline: 16px; }
+}

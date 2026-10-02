@@ -425,7 +425,7 @@ function AppContent() {
     : '';
 
   return (
-    <div className="h-[100dvh] max-h-[100dvh] w-full text-slate-100 flex flex-col justify-between overflow-hidden relative select-none">
+    <div className="trivia-app h-[100dvh] max-h-[100dvh] w-full text-slate-100 flex flex-col justify-between overflow-hidden relative select-none">
       {/* Dynamic Cosmic Animated Background with Reactive Category Lighting */}
       <AnimatedBackground activeCategory={activeCategory} />
 
@@ -456,13 +456,13 @@ function AppContent() {
       <OfflineBanner isOnline={pwa.isOnline} />
 
       {/* PWA Install Banner */}
-      <PWAInstallBanner
+      {view === 'LOBBY' && <PWAInstallBanner
         isInstallable={pwa.isInstallable}
         isInstalled={pwa.isInstalled}
         isIOS={pwa.isIOS}
         onInstall={pwa.installApp}
         onShowIOSGuide={() => setShowIOSSheet(true)}
-      />
+      />}
 
       {/* iOS Safari Home-Screen Guide Sheet */}
       <IOSInstallSheet
@@ -530,11 +530,11 @@ function AppContent() {
                 <div className="flex items-center gap-1.5 text-xs text-slate-400">
                   <span
                     className={`w-2 h-2 rounded-full ${
-                      isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                      gameState.status === 'COMPLETED' ? 'bg-slate-400' : isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
                     }`}
                   />
                   <span className="text-[11px] font-bold">
-                    {isConnected ? 'Realtime Match' : 'Reconnecting...'}
+                    {gameState.status === 'COMPLETED' ? 'Match complete' : isConnected ? 'Realtime Match' : 'Reconnecting...'}
                   </span>
                 </div>
                 {gameState.status === 'IN_PROGRESS' && (

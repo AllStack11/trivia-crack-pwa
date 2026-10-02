@@ -23,13 +23,13 @@ interface CharacterShowcaseProps {
 
 export default function CharacterShowcase({
   initialCategory = 'SCIENCE',
-  unlockedCrowns = [],
+  unlockedCrowns,
   className = ''
 }: CharacterShowcaseProps) {
   const [selectedCat, setSelectedCat] = useState<Category>(initialCategory);
   const profile = CHARACTER_PROFILES[selectedCat];
   const catInfo = CATEGORIES[selectedCat];
-  const isCrownUnlocked = unlockedCrowns.includes(selectedCat);
+  const isCrownUnlocked = unlockedCrowns?.includes(selectedCat);
 
   const handleSelect = (cat: Category) => {
     setSelectedCat(cat);
@@ -49,14 +49,14 @@ export default function CharacterShowcase({
       />
 
       {/* Header Title */}
-      <div className="flex items-center justify-between mb-4 relative z-10">
+      <div className="flex flex-col items-start gap-3 mb-4 relative z-10">
         <div>
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Meet The Champions</span>
           <h3 className="text-base sm:text-lg font-black text-white tracking-tight flex items-center gap-2">
             <span>Crown Guardians</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-400/30">
+            {unlockedCrowns && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-400/30">
               {unlockedCrowns.length}/6 Unlocked
-            </span>
+            </span>}
           </h3>
         </div>
 
@@ -64,22 +64,25 @@ export default function CharacterShowcase({
         <div className="flex gap-1 sm:gap-1.5 p-1 bg-slate-950/70 border border-slate-800 rounded-2xl">
           {ALL_CATEGORIES.map((cat) => {
             const isSelected = selectedCat === cat;
-            const hasCrown = unlockedCrowns.includes(cat);
+            const hasCrown = unlockedCrowns?.includes(cat);
             return (
               <button
                 key={cat}
+                type="button"
+                aria-pressed={isSelected}
+                aria-label={`${CHARACTER_PROFILES[cat].name}, ${CATEGORIES[cat].name}`}
                 onClick={() => handleSelect(cat)}
-                className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-sm transition-all ${
+                className={`relative w-11 h-11 rounded-xl flex items-center justify-center text-sm transition-all ${
                   isSelected
                     ? 'ring-2 ring-white/80 shadow-md scale-105'
                     : 'opacity-65 hover:opacity-100 hover:scale-100'
                 }`}
                 style={{
-                  backgroundColor: isSelected ? CATEGORIES[cat].color : '#1E293B'
+                  backgroundColor: isSelected ? CATEGORIES[cat].color : '#edf6ed'
                 }}
                 title={`${CHARACTER_PROFILES[cat].name} - ${CATEGORIES[cat].name}`}
               >
-                <span>{CHARACTER_PROFILES[cat].symbol}</span>
+                <CategoryCharacter category={cat} size="sm" />
                 {hasCrown && (
                   <span className="absolute -top-1 -right-1 text-[8px] bg-yellow-400 text-slate-950 rounded-full px-0.5 font-black shadow">
                     👑
@@ -99,7 +102,7 @@ export default function CharacterShowcase({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -12, scale: 0.98 }}
           transition={{ duration: 0.25, ease: 'easeOut' }}
-          className="relative z-10 flex flex-col sm:flex-row items-center gap-4 sm:gap-6 bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 sm:p-5"
+          className="relative z-10 flex flex-col sm:flex-row items-center gap-4 sm:gap-6 champion-stage bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 sm:p-5"
         >
           {/* Animated Avatar */}
           <div className="flex flex-col items-center gap-2 shrink-0">
@@ -108,7 +111,6 @@ export default function CharacterShowcase({
               size="xl"
               mood="happy"
               showCrown={isCrownUnlocked}
-              interactive
             />
             <span
               className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full text-white shadow-sm"
