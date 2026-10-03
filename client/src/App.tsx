@@ -16,13 +16,16 @@ import { useGameSync } from './hooks/useGameSync';
 import type { AccountSession } from './components/Lobby';
 import { apiUrl } from './utils/api';
 import {
-  playFanfare,
-  playCorrectChime,
+  playAudioCue,
+  installAudioLifecycle,
+  stopAllAudio,
+  triggerHaptic,
   isAudioMuted,
   setAudioMuted,
   playButtonPop,
 } from './utils/audio';
 import confetti from 'canvas-confetti';
+import { GameAudioTracker } from './utils/gameAudio';
 import AnimatedBackground from './components/ui/AnimatedBackground';
 import Button from './components/ui/Button';
 import Card from './components/ui/Card';
@@ -31,7 +34,10 @@ import OfflineBanner from './components/ui/OfflineBanner';
 import PWAInstallBanner from './components/ui/PWAInstallBanner';
 import IOSInstallSheet from './components/ui/IOSInstallSheet';
 import { ToastProvider, useToast } from './components/ui/Toast';
-import { usePWA } from './hooks/usePWA';
+import { usePWA, setAppBadge } from './hooks/usePWA';
+import { usePushNotifications } from './hooks/usePushNotifications';
+import { useAppUpdate } from './hooks/useAppUpdate';
+import { detachPush, serializePush } from './utils/push';
 
 type AppView = 'LOBBY' | 'PACK_CREATOR' | 'GAME';
 
@@ -43,6 +49,10 @@ function AppContent() {
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
   const [account, setAccount] = useState<AccountSession | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const push = usePushNotifications(account);
+  const appUpdate = useAppUpdate();
   const [muted, setMuted] = useState<boolean>(isAudioMuted());
   const [showIOSSheet, setShowIOSSheet] = useState<boolean>(false);
 
@@ -67,12 +77,16 @@ function AppContent() {
   useEffect(() => {
     let mounted = true;
     const restore = async () => {
+      setRestoreError(null);
       try {
         const raw = localStorage.getItem('trivia_clash_account');
         if (raw) {
-          const saved = JSON.parse(raw) as AccountSession;
+          let saved: AccountSession;
+          try { saved = JSON.parse(raw) as AccountSession; }
+          catch { localStorage.removeItem('trivia_clash_account'); return; }
           if (saved.id && saved.username && saved.token) {
             const response = await fetch(apiUrl('/api/me'), {
+              signal: AbortSignal.timeout(10000),
               headers: { Authorization: `Bearer ${saved.token}` },
             });
             if (response.ok) {
@@ -88,11 +102,15 @@ function AppContent() {
                   setView('GAME');
                 } else if (window.location.pathname === '/packs') setView('PACK_CREATOR');
               }
-            } else localStorage.removeItem('trivia_clash_account');
+            } else if (response.status === 401) {
+              localStorage.removeItem('trivia_clash_account');
+              void serializePush(() => detachPush()).catch(() => {});
+              void setAppBadge(0);
+            } else if (mounted) setRestoreError('Could not restore your profile. Your sign-in is saved; reconnect to retry.');
           } else localStorage.removeItem('trivia_clash_account');
         }
       } catch {
-        localStorage.removeItem('trivia_clash_account');
+        if (mounted) setRestoreError('Could not restore your profile. Your sign-in is saved; reconnect to retry.');
       } finally {
         if (mounted) setAuthLoading(false);
       }
@@ -101,7 +119,17 @@ function AppContent() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [restoreAttempt]);
+
+  useEffect(() => {
+    const resume = () => {
+      if (!account && localStorage.getItem('trivia_clash_account')) {
+        setAuthLoading(true); setRestoreAttempt(attempt => attempt + 1);
+      }
+    };
+    window.addEventListener('online', resume);
+    return () => window.removeEventListener('online', resume);
+  }, [account]);
 
   const handleAuth = (authenticated: AccountSession) => {
     setAccount(authenticated);
@@ -118,6 +146,9 @@ function AppContent() {
   };
 
   const handleLogout = useCallback(async () => {
+    stopAllAudio();
+    await serializePush(() => detachPush(account?.token)).catch(() => {});
+    void setAppBadge(0);
     if (account) {
       try {
         await fetch(apiUrl('/api/auth/logout'), {
@@ -137,6 +168,8 @@ function AppContent() {
   }, [account, showToast]);
 
   const handleUnauthorized = useCallback(() => {
+    void serializePush(() => detachPush()).catch(() => {});
+    void setAppBadge(0);
     setAccount(null);
     setActiveGameId(null);
     setView('LOBBY');
@@ -245,19 +278,27 @@ function AppContent() {
   }, []);
 
 
-  // Handle Game Over victory sound & confetti
+  const audioTrackerRef = useRef(new GameAudioTracker());
+  useEffect(() => installAudioLifecycle(), []);
   useEffect(() => {
-    if (gameState?.status === 'COMPLETED' && gameState.winnerId) {
-      if (gameState.winnerId === account?.id) {
-        playFanfare();
-        confetti({
-          particleCount: 140,
-          spread: 85,
-          origin: { y: 0.45 },
-        });
+    audioTrackerRef.current.reset();
+    stopAllAudio();
+    return stopAllAudio;
+  }, [activeGameId, account?.id, view]);
+  useEffect(() => {
+    if (view !== 'GAME' || !gameState || gameState.id !== activeGameId || !account) return;
+    const cues = audioTrackerRef.current.observe(gameState, account.id);
+    for (const cue of cues) {
+      if (cue === 'victory' || cue === 'defeat') stopAllAudio();
+      playAudioCue(cue, 0, cue === 'turn' && cues.length > 1 ? .65 : 0);
+      if (cue === 'correct' || cue === 'crown' || cue === 'steal') triggerHaptic('success');
+      if (cue === 'incorrect' || cue === 'timeout' || cue === 'defeat') triggerHaptic('error');
+      if (cue === 'victory') {
+        triggerHaptic('heavy');
+        confetti({ particleCount: 140, spread: 85, origin: { y: .45 } });
       }
     }
-  }, [gameState?.status, gameState?.winnerId, account?.id]);
+  }, [gameState, activeGameId, account, view]);
 
   const handleOpenGame = (gameId: string) => {
     setActiveGameId(gameId);
@@ -331,7 +372,7 @@ function AppContent() {
     const info = landedSlice === 'CROWN' ? null : CATEGORIES[landedSlice];
     const catName = info ? `${info.characterName} (${info.name})` : 'Golden Crown Battle!';
     setLandedCategoryName(catName);
-    playCorrectChime();
+    playAudioCue(landedSlice === 'CROWN' ? 'crownLanding' : 'landing');
 
     spinHoldTimerRef.current = window.setTimeout(() => {
       setIsWheelSpinning(false);
@@ -452,6 +493,11 @@ function AppContent() {
         }
       />
 
+      {appUpdate.available && view === 'LOBBY' && <div className="relative z-30 bg-indigo-100 p-3 flex items-center justify-between gap-3 text-sm" role="status">
+        <span>A new version is ready.</span>
+        <button type="button" onClick={appUpdate.update} className="rounded-xl bg-indigo-600 text-white px-4 py-2 font-bold">Update app</button>
+      </div>}
+
       {/* Floating Offline Notification Banner */}
       <OfflineBanner isOnline={pwa.isOnline} />
 
@@ -505,13 +551,21 @@ function AppContent() {
                   </div>
                 </div>
               ) : (
+                <>
+                {restoreError && <div className="relative z-30 bg-amber-100 p-3 text-sm" role="status">
+                  <p>{restoreError}</p>
+                  <button type="button" className="font-bold mt-2" onClick={() => { setAuthLoading(true); setRestoreAttempt(attempt => attempt + 1); }}>Reconnect to your profile</button>
+                </div>}
                 <Lobby
+                  push={push}
+                  onInstallGuide={() => setShowIOSSheet(true)}
                   account={account}
                   onAuth={handleAuth}
                   onLogout={handleLogout}
                   onOpenGame={handleOpenGame}
                   onOpenPackCreator={handleNavigateToPacks}
                 />
+                </>
               )}
             </motion.main>
           )}

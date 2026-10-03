@@ -3,7 +3,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { ActiveQuestionSync, Category, QuestionResult } from '../../../shared/src/index';
 import { CATEGORIES } from '../../../shared/src/index';
-import { playCorrectChime, playIncorrectBuzzer, playButtonPop, triggerHaptic } from '../utils/audio';
+import { playAudioCue, playButtonPop } from '../utils/audio';
+import { CountdownAudioTracker } from '../utils/gameAudio';
 import { requestWakeLock, releaseWakeLock } from '../hooks/usePWA';
 import confetti from 'canvas-confetti';
 import CategoryCharacter, { type CharacterMood } from './characters/CategoryCharacter';
@@ -41,6 +42,16 @@ export default function QuestionView({
   const characterProfile =
     CHARACTER_PROFILES[question.category as Category] || CHARACTER_PROFILES.ART;
   const totalDuration = question.durationMs || 20000;
+
+  const countdownAudio = useRef(new CountdownAudioTracker());
+  const revealedQuestion = useRef<string | null>(null);
+  useEffect(() => {
+    countdownAudio.current = new CountdownAudioTracker();
+    if (!lastResult && revealedQuestion.current !== question.id) {
+      revealedQuestion.current = question.id;
+      playAudioCue('reveal');
+    }
+  }, [question.id]);
 
   // Wake lock management during question
   useEffect(() => {
@@ -98,12 +109,12 @@ export default function QuestionView({
       const elapsed = Date.now() - startTimeRef.current;
       const remaining = questionTimeRemaining({ startedAt: startTimeRef.current, durationMs: totalDuration });
       setTimeLeftMs(remaining);
+      const pulse = countdownAudio.current.pulse(remaining, isMyTurn && !hasAnsweredRef.current);
+      if (pulse !== null) playAudioCue('countdown', pulse);
 
       if (remaining <= 0 && !hasAnsweredRef.current && Date.now() >= retryAfterRef.current) {
         void releaseWakeLock();
         if (isMyTurn) {
-          playIncorrectBuzzer();
-          triggerHaptic('error');
           void submitAnswer(-1, Math.max(0, elapsed));
         }
       }
@@ -117,8 +128,6 @@ export default function QuestionView({
     if (lastResult) {
       void releaseWakeLock();
       if (lastResult.wasCorrect) {
-        playCorrectChime();
-        triggerHaptic('success');
         if (lastResult.awardedCrown || lastResult.stolenCrown) {
           confetti({
             particleCount: 90,
@@ -126,9 +135,6 @@ export default function QuestionView({
             origin: { y: 0.6 },
           });
         }
-      } else {
-        playIncorrectBuzzer();
-        triggerHaptic('error');
       }
     }
   }, [lastResult]);
@@ -139,7 +145,6 @@ export default function QuestionView({
 
       setSelectedIndex(index);
       playButtonPop();
-      triggerHaptic('selection');
       void releaseWakeLock();
 
       const timeSpent = Math.max(100, Date.now() - startTimeRef.current);

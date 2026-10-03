@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
+import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
 import {
   CATEGORIES,
@@ -23,6 +24,8 @@ import {
 } from './services/gameEngine';
 import { getSession, listDirectory, listPlayers, login, logout, register, RegistrationError } from './services/authService';
 import { isGameParticipant, listInvitations, listMatches, respondToInvitation, sendInvitation } from './services/invitationService';
+import { drainPushOutbox, enqueueTest, hasSubscription, pushConfigured, removeSubscription, saveSubscription, type PushEnvironment } from './services/pushService';
+import type { PushSubscriptionRequest } from '../../shared/src/index';
 import {
   createPack,
   deletePack,
@@ -39,7 +42,7 @@ import {
 } from './services/questionCache';
 type Bindings = {
   DB?: CloudflareD1Database;
-};
+} & PushEnvironment;
 
 export const app = new Hono<{ Bindings: Bindings }>();
 
@@ -49,6 +52,12 @@ app.use('*', async (c, next) => {
   // Query strings and Authorization headers can contain credentials.
   console.log(c.req.method, new URL(c.req.url).pathname);
   await next();
+  if (pushConfigured(c.env || {})) {
+    // Only Workers has an execution context. Bun uses its bounded background timer.
+    try {
+      c.executionCtx.waitUntil(getDatabase(c.env).then(db => drainPushOutbox(db, c.env)).catch(() => console.warn('Push delivery deferred')));
+    } catch { /* Bun/test request has no execution context. */ }
+  }
 });
 
 // Health check
@@ -106,6 +115,50 @@ app.post('/api/auth/logout', async (c) => {
 app.get('/api/me', async (c) => {
   const { account } = await authenticated(c);
   return account ? c.json({ account }) : c.json({ error: 'Authentication required' }, 401);
+});
+
+app.get('/api/push/config', async (c) => {
+  const { account } = await authenticated(c);
+  if (!account) return c.json({ error: 'Authentication required' }, 401);
+  const available = pushConfigured(c.env || {});
+  return c.json({ available, publicKey: available ? c.env.VAPID_PUBLIC_KEY! : null });
+});
+
+app.use('/api/push/*', bodyLimit({ maxSize: 4096, onError: c => c.json({ error: 'Subscription too large' }, 413) }));
+
+app.get('/api/push/subscription', async (c) => {
+  const { db, token, account } = await authenticated(c);
+  if (!account || !token) return c.json({ error: 'Authentication required' }, 401);
+  return c.json({ subscribed: await hasSubscription(db, account.id, token) });
+});
+
+app.post('/api/push/subscription', async (c) => {
+  const { db, token, account } = await authenticated(c);
+  if (!account || !token) return c.json({ error: 'Authentication required' }, 401);
+  if (!pushConfigured(c.env || {})) return c.json({ error: 'Notifications are not configured yet' }, 503);
+  try {
+    if (Number(c.req.header('Content-Length')) > 4096) return c.json({ error: 'Subscription too large' }, 413);
+    const body = await c.req.text();
+    if (body.length > 4096) return c.json({ error: 'Subscription too large' }, 413);
+    await saveSubscription(db, account.id, token, JSON.parse(body) as PushSubscriptionRequest);
+    return c.json({ ok: true });
+  } catch { return c.json({ error: 'Invalid or unsupported notification subscription' }, 400); }
+});
+
+app.delete('/api/push/subscription', async (c) => {
+  const { db, token, account } = await authenticated(c);
+  if (!account || !token) return c.json({ error: 'Authentication required' }, 401);
+  await removeSubscription(db, account.id, token);
+  return c.json({ ok: true });
+});
+
+app.post('/api/push/test', async (c) => {
+  const { db, token, account } = await authenticated(c);
+  if (!account || !token) return c.json({ error: 'Authentication required' }, 401);
+  if (!pushConfigured(c.env || {})) return c.json({ error: 'Notifications are not configured yet' }, 503);
+  if (!await hasSubscription(db, account.id, token)) return c.json({ error: 'Enable notifications on this device first' }, 409);
+  await enqueueTest(db, account.id, token);
+  return c.json({ queued: true }, 202);
 });
 
 app.get('/api/players', async (c) => {

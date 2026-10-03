@@ -5,6 +5,8 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
+    "typecheck:worker": "tsc -p tsconfig.worker.json",
+    "push:keys": "bun scripts/create-push-keys.ts",
     "dev": "bun --watch src/bunServer.ts",
     "dev:wrangler": "wrangler dev src/index.ts --d1=DB=triviaclash-db",
     "build": "bun build src/bunServer.ts --outdir dist",
@@ -12,12 +14,13 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@block65/webcrypto-web-push": "^2.0.0",
     "hono": "^4.13.12"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250224.0",
+    "@cloudflare/workers-types": "^5.20261003.1",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
-    "wrangler": "^3.114.0"
+    "wrangler": "^4.147.0"
   }
 }

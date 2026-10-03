@@ -143,3 +143,65 @@ CREATE TABLE IF NOT EXISTS cached_questions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cached_questions_cat ON cached_questions(category, served_count, last_served_at);
+
+-- Outbox rows are created by the same transaction as the underlying game change.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+  session_hash TEXT NOT NULL REFERENCES auth_sessions(token_hash) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
+
+CREATE TABLE IF NOT EXISTS push_outbox (
+  event_key TEXT NOT NULL,
+  subscription_id TEXT NOT NULL REFERENCES push_subscriptions(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK(kind IN ('invitation', 'accepted', 'turn', 'completed', 'test')),
+  resource_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at INTEGER NOT NULL DEFAULT 0,
+  lease_id TEXT,
+  lease_until INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(event_key, subscription_id)
+);
+CREATE INDEX IF NOT EXISTS idx_push_due ON push_outbox(next_attempt_at, lease_until);
+
+CREATE TRIGGER IF NOT EXISTS push_invitation
+AFTER INSERT ON game_invitations WHEN NEW.status = 'PENDING'
+BEGIN
+  INSERT OR IGNORE INTO push_outbox(event_key, subscription_id, kind, resource_id, created_at, expires_at)
+  SELECT 'invite:' || NEW.id, id, 'invitation', NEW.id, NEW.created_at, NEW.created_at + 86400000
+  FROM push_subscriptions WHERE user_id = NEW.recipient_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS push_accepted
+AFTER UPDATE OF status ON game_invitations WHEN OLD.status = 'PENDING' AND NEW.status = 'ACCEPTED'
+BEGIN
+  INSERT OR IGNORE INTO push_outbox(event_key, subscription_id, kind, resource_id, created_at, expires_at)
+  SELECT 'accepted:' || NEW.id, id, 'accepted', NEW.game_id, NEW.updated_at, NEW.updated_at + 3600000
+  FROM push_subscriptions WHERE user_id = NEW.sender_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS push_turn
+AFTER UPDATE OF current_turn_player_id ON games
+WHEN NEW.status = 'IN_PROGRESS' AND OLD.current_turn_player_id <> NEW.current_turn_player_id
+BEGIN
+  DELETE FROM push_outbox WHERE kind = 'turn' AND resource_id = NEW.id;
+  INSERT OR IGNORE INTO push_outbox(event_key, subscription_id, kind, resource_id, created_at, expires_at)
+  SELECT 'turn:' || NEW.id || ':' || (NEW.revision + 1), id, 'turn', NEW.id, NEW.updated_at, NEW.updated_at + 3600000
+  FROM push_subscriptions WHERE user_id = NEW.current_turn_player_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS push_completed
+AFTER UPDATE OF status ON games WHEN OLD.status <> 'COMPLETED' AND NEW.status = 'COMPLETED'
+BEGIN
+  DELETE FROM push_outbox WHERE kind IN ('turn', 'accepted') AND resource_id = NEW.id;
+  INSERT OR IGNORE INTO push_outbox(event_key, subscription_id, kind, resource_id, created_at, expires_at)
+  SELECT 'completed:' || NEW.id, id, 'completed', NEW.id, NEW.updated_at, NEW.updated_at + 86400000
+  FROM push_subscriptions WHERE user_id IN (NEW.player1_id, NEW.player2_id);
+END;

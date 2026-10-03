@@ -82,7 +82,6 @@ export default function CrownModal({
               onClick={() => {
                 setMode('claim');
                 playButtonPop();
-                triggerHaptic('selection');
                 if (unownedCategories.length > 0 && !unownedCategories.includes(selectedTarget as Category)) {
                   setSelectedTarget(unownedCategories[0]);
                 }
@@ -100,7 +99,6 @@ export default function CrownModal({
               onClick={() => {
                 setMode('steal');
                 playButtonPop();
-                triggerHaptic('selection');
                 if (opponentCrowns.length > 0 && !opponentCrowns.includes(selectedTarget as Category)) {
                   setSelectedTarget(opponentCrowns[0]);
                 }
@@ -133,7 +131,6 @@ export default function CrownModal({
                     onClick={() => {
                       setSelectedWager(cat);
                       playButtonPop();
-                      triggerHaptic('selection');
                     }}
                     className={`p-2 rounded-xl flex flex-col items-center gap-1 border transition-all ${
                       isSelected
@@ -173,7 +170,6 @@ export default function CrownModal({
                     onClick={() => {
                       setSelectedTarget(cat);
                       playButtonPop();
-                      triggerHaptic('selection');
                     }}
                     className={`
                       p-3 rounded-2xl border text-left flex items-center gap-3 transition-all relative overflow-hidden

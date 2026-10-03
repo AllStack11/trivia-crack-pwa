@@ -64,7 +64,7 @@ export default function AppHeader({
               whileTap={{ scale: 0.9 }}
               onClick={() => {
                 playButtonPop();
-                triggerHaptic('light');
+
                 onBackToLobby();
               }}
               className="p-2 -ml-1 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60 shadow flex items-center gap-1.5 text-xs font-semibold"
@@ -136,7 +136,7 @@ export default function AppHeader({
               whileTap={{ scale: 0.9 }}
               onClick={() => {
                 playButtonPop();
-                triggerHaptic('light');
+
                 onShareApp();
               }}
               title="Share duel link"

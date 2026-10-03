@@ -20,8 +20,8 @@ export default function OfflineBanner({ isOnline }: OfflineBannerProps) {
             <div className="p-1 rounded-lg bg-amber-500/20 text-amber-400 flex-shrink-0 animate-pulse">
               <WifiOff className="w-3.5 h-3.5" />
             </div>
-            <p className="text-xs font-medium tracking-tight flex-1 truncate">
-              <span className="font-bold">Offline mode</span> &bull; Matches will sync once connection resumes
+            <p className="text-xs font-medium tracking-tight flex-1" role="status">
+              <span className="font-bold">You're offline.</span> Live matches need a connection. Reconnecting when you're back online.
             </p>
             <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400/50 flex-shrink-0" />
           </div>

@@ -31,7 +31,7 @@ function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
-async function digest(value: string): Promise<string> {
+export async function digest(value: string): Promise<string> {
   return encodeBase64(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(value))));
 }
 

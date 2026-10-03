@@ -101,7 +101,7 @@ cd client && bun run deploy
 
 The migration baseline targets a fresh database; it does not upgrade older deployments. Verify migrations with disposable local D1 state, never the production database.
 
-Game actions use monotonic revisions and commit answer claims, scores, crowns and game state atomically. Question deadlines are persisted by the server: ordinary questions include the 4.4-second wheel animation and 0.9-second landing display before their 20-second timer; crown questions start immediately. The server allows 2 seconds for delivery and resolves expired questions on match reads/SSE, even if the player disconnects. Reloading preserves the deadline. If all question sources are exhausted, content can repeat with a new answerable occurrence ID.
+Game actions use monotonic revisions and commit answer claims, scores, crowns and game state atomically. Question deadlines are persisted by the server: ordinary questions include the 6.4-second wheel animation and 0.9-second landing display before their 20-second timer; crown questions start immediately. The server allows 2 seconds for delivery and resolves expired questions on match reads/SSE, even if the player disconnects. Reloading preserves the deadline. If all question sources are exhausted, content can repeat with a new answerable occurrence ID.
 
 Session tokens remain in the client account storage and bearer headers. SSE does not accept query-string session tokens. Request logs omit query strings and headers. Client synchronization ignores older revisions and responses from previous matches or sessions; failed answer requests unlock the options for retry.
 
@@ -110,3 +110,19 @@ Session tokens remain in the client account storage and bearer headers. SSE does
 The client uses original category mascots and an illustrated game world in `client/public/art/`. Artwork is optimized as WebP with transparency preserved for mascots. The home screen, category gallery, questions, crowns, and spinning wheel share the same characters. Mascot idle animations respect reduced-motion preferences; wheel timing continues to follow the server game contract. The mobile dock provides Play, Friends, Heroes, and Packs. Profile creation and optional PIN entry use bottom sheets.
 
 On Windows, if Vite's bundled config loader cannot load native dependencies, use `bun run --cwd client vite --configLoader native` for development or `bun run --cwd client vite build --configLoader native` after `bun run --cwd client tsc --noEmit` for a build.
+
+### Game audio
+
+Original procedural game-show effects add mechanical wheel clicks and a spin swoosh, question reveals, layered answer stingers, crown/steal celebrations, turn prompts, and victory/defeat cues. Your own question plays urgency pulses during the final five seconds. No audio files, music, or external downloads are required.
+
+Use the header sound button to mute all effects; the preference persists on this device and muting immediately cancels playing and scheduled sounds. Audio unlocks after a click, tap, or key press. Hidden pages remain silent, and restoring a match does not replay historical results. Game timing and answer correctness remain server-controlled.
+
+### Installed app icons and notification roadmap
+
+Custom crown PNG icons in `client/public/icons/` provide 192px/512px install assets, a maskable Android icon, a 180px Apple touch icon, and a favicon. The manifest has a stable app ID; the service-worker cache includes the new assets. The source image and generation prompt are retained alongside the exports.
+
+Opt-in Web Push alerts cover incoming invitations, accepted invitations, your turn, and completed matches. The Play tab includes enable, test, and off controls. iPhone/iPad users must install to the Home Screen before enabling alerts. Each device subscription belongs to the authenticated session; sign-out, expiration, and profile switching detach it. Endpoints and encryption keys are never logged. A transactional D1 outbox records events alongside game mutations, with bounded delivery retries, endpoint cleanup, and minute-by-minute scheduled recovery.
+
+The service worker uses fresh network navigation, caches hashed app assets, and opens cached deep links when offline. Multiplayer still requires connectivity. A lobby update prompt activates new versions without interrupting a question. Returning to the app refreshes dashboard and match state. Game actions have an eight-second network timeout so failed answers can be retried; server revisions and deadlines remain authoritative. Text zoom is enabled.
+
+See [notification setup and verification](docs/mobile-pwa-plan.md) before deploying. Configure VAPID secrets and use a fresh database containing the updated baseline; existing initialized databases are not upgraded by changing the baseline file. Real installed iPhone/Android lock-screen delivery must be checked after deployment.

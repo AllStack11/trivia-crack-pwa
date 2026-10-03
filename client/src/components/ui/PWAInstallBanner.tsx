@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Download, Share, X, Sparkles } from 'lucide-react';
+import { Download, Share, X } from 'lucide-react';
 import { playButtonPop, triggerHaptic } from '../../utils/audio';
 
 export interface PWAInstallBannerProps {
@@ -22,8 +22,11 @@ export default function PWAInstallBanner({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const isDismissed = sessionStorage.getItem('trivia_pwa_banner_dismissed') === 'true';
-    setDismissed(isDismissed);
+    try {
+      setDismissed(sessionStorage.getItem('trivia_pwa_banner_dismissed') === 'true');
+    } catch {
+      setDismissed(false);
+    }
   }, []);
 
   if (isInstalled || dismissed) return null;
@@ -49,6 +52,7 @@ export default function PWAInstallBanner({
     }
   };
 
+  // Stay above the routed main content (z-20) so it cannot intercept banner clicks.
   return (
     <AnimatePresence>
       <motion.div
@@ -56,12 +60,12 @@ export default function PWAInstallBanner({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 20, scale: 0.95 }}
         transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-        className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+4.75rem)] inset-x-3 z-20 max-w-md mx-auto pointer-events-auto"
+        className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+4.75rem)] inset-x-3 z-30 max-w-md mx-auto pointer-events-auto"
       >
         <div className="bg-slate-900/95 backdrop-blur-xl border border-indigo-500/40 rounded-2xl p-3.5 shadow-2xl flex items-center justify-between gap-3 shadow-indigo-950/50">
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600 to-amber-500 flex items-center justify-center shadow-md flex-shrink-0">
-              <Sparkles className="w-6 h-6 text-white" />
+              <img src="/icons/app-192.png" alt="" className="w-11 h-11 rounded-xl" />
             </div>
             <div className="min-w-0">
               <h4 className="text-xs font-bold text-white tracking-tight flex items-center gap-1.5 truncate">
@@ -71,7 +75,7 @@ export default function PWAInstallBanner({
                 </span>
               </h4>
               <p className="text-[11px] text-slate-300 truncate mt-0.5">
-                {isIOS ? 'Add to Home Screen for full app mode' : 'Fast launcher, offline duels & haptics'}
+                {isIOS ? 'Add to Home Screen for full app mode' : 'Quick launch and full-screen play'}
               </p>
             </div>
           </div>

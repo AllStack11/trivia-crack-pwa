@@ -2,7 +2,7 @@ export type Category = 'ART' | 'SCIENCE' | 'SPORTS' | 'ENTERTAINMENT' | 'GEOGRAP
 
 export type WheelSlice = Category | 'CROWN';
 
-export const WHEEL_SPIN_DURATION_MS = 4400;
+export const WHEEL_SPIN_DURATION_MS = 6400;
 export const SPIN_RESULT_HOLD_MS = 900;
 export const QUESTION_DURATION_MS = 20000;
 export const QUESTION_ANSWER_GRACE_MS = 2000;
@@ -309,5 +309,24 @@ export interface CrownChoiceRequest {
   action: 'claim' | 'steal';
   category: Category;
   wagerCategory?: Category;
+}
+
+export interface PushSubscriptionRequest {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+export interface PushConfigResponse {
+  available: boolean;
+  publicKey: string | null;
+}
+
+export interface PushNotificationPayload {
+  accountId: string;
+  title: string;
+  body: string;
+  url: string;
+  tag: string;
+  badgeCount: number;
 }
 

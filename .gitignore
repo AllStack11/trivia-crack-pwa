@@ -1,11 +1,48 @@
+# Dependencies
 node_modules/
-dist/
-.wrangler/
-*.sqlite*
-.DS_Store
-Thumbs.db
-.env
-.env.local
 
+# Build output and tool caches
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+.wrangler/
+
+# Local databases (including SQLite journal, WAL, and SHM files)
+*.sqlite*
+
+# Local environment and secrets; keep shareable templates
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.sample
+!.env.*.sample
+!.env.template
+!.env.*.template
+.dev.vars*
+!.dev.vars.example
+!.dev.vars.*.example
+!.dev.vars.sample
+!.dev.vars.template
+/server/push-secrets.json
+
+# Logs and diagnostic reports
+*.log
+report.*.json
+
+# Test output and local verification artifacts
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.local-push-verification/
 .local-smoke/
 .playwright-mcp/
+
+# OS and editor temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo

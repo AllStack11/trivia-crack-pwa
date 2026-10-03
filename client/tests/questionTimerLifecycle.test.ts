@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { WHEEL_SPIN_DURATION_MS, SPIN_RESULT_HOLD_MS } from '../../shared/src/index';
 import { questionTimeRemaining } from '../src/utils/gameState';
 
 test('reloading or receiving a new object preserves the persisted deadline', () => {
@@ -10,8 +11,10 @@ test('reloading or receiving a new object preserves the persisted deadline', () 
 });
 
 test('the server presentation delay keeps the countdown full during wheel animation', () => {
-  const question = { startedAt: 15300, durationMs: 20000 };
+  const startedAt = 10000 + WHEEL_SPIN_DURATION_MS + SPIN_RESULT_HOLD_MS;
+  const question = { startedAt, durationMs: 20000 };
   expect(questionTimeRemaining(question, 10000)).toBe(20000);
-  expect(questionTimeRemaining(question, 15300)).toBe(20000);
-  expect(questionTimeRemaining(question, 16300)).toBe(19000);
+  expect(questionTimeRemaining(question, 10000 + WHEEL_SPIN_DURATION_MS)).toBe(20000);
+  expect(questionTimeRemaining(question, startedAt)).toBe(20000);
+  expect(questionTimeRemaining(question, startedAt + 1000)).toBe(19000);
 });

@@ -148,7 +148,7 @@ export function usePWA() {
   const deferredPromptRef = useRef<BeforeInstallPromptEvent | null>(null);
 
   const isIOS = typeof window !== 'undefined' && (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as unknown as WindowWithExtras).MSStream
+    (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) && !(window as unknown as WindowWithExtras).MSStream
   );
 
   useEffect(() => {

@@ -9,6 +9,7 @@ export interface ButtonProps extends Omit<HTMLMotionProps<'button'>, 'size'> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;
+  sound?: boolean;
   glow?: boolean;
   icon?: React.ReactNode;
   children?: React.ReactNode;
@@ -35,6 +36,7 @@ export default function Button({
   variant = 'primary',
   size = 'md',
   loading = false,
+  sound = true,
   glow = false,
   icon,
   children,
@@ -45,7 +47,7 @@ export default function Button({
 }: ButtonProps) {
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (disabled || loading) return;
-    playButtonPop();
+    if (sound) playButtonPop();
     onClick?.(e);
   };
 

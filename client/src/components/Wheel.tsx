@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Hand } from 'lucide-react';
 import type { Category, WheelSlice } from '../../../shared/src/index';
-import { playButtonPop, playWheelTick, triggerHaptic } from '../utils/audio';
+import { playButtonPop, playWheelTick, triggerHaptic, startWheelMotion } from '../utils/audio';
 import { requestWakeLock, releaseWakeLock } from '../hooks/usePWA';
 import CategoryCharacter from './characters/CategoryCharacter';
 import { CHARACTER_PROFILES } from './characters/characterData';
@@ -276,29 +276,32 @@ export default function Wheel({
     const targetRad = (targetDegrees * Math.PI) / 180;
     const deltaAngle = targetRad - startAngle;
     const duration = WHEEL_SPIN_DURATION_MS; // ms
+    // Normalize actual angular velocity against a brisk 32-radian/second spin.
+    const peakSpeed = Math.min(1, Math.abs(deltaAngle) * 4 / (duration / 1000) / 32);
+    const stopMotion = startWheelMotion(duration, peakSpeed);
+    lastPegCrossedRef.current = Math.floor(startAngle * 14 / (2 * Math.PI));
     const startTime = performance.now();
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
+      stopMotion.update(progress);
 
-      // Decelerating quintic ease-out curve
+      // Decelerating quartic ease-out curve
       const easeOut = 1 - Math.pow(1 - progress, 4);
       const currentAngle = startAngle + deltaAngle * easeOut;
       currentRotationRef.current = currentAngle;
 
       // Track flapper peg hits
-      const currentDeg = ((currentAngle * 180) / Math.PI) % 360;
-      const pegIndex = Math.floor((currentDeg * 14) / 360);
+      const pegIndex = Math.floor(currentAngle * 14 / (2 * Math.PI));
 
       if (pegIndex !== lastPegCrossedRef.current) {
+        // Account for multiple peg crossings at high speed, with no backlog after a stalled frame.
+        const crossings = Math.min(3, Math.abs(pegIndex - lastPegCrossedRef.current));
         lastPegCrossedRef.current = pegIndex;
-        playWheelTick((14 - (pegIndex % 14)) * 0.1);
+        for (let hit = 0; hit < crossings; hit++) playWheelTick(peakSpeed * Math.pow(1 - progress, 3), hit * .004);
         setFlapperDeflection(-18);
         setTimeout(() => setFlapperDeflection(0), 40);
 
-        if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
-          navigator.vibrate(8);
-        }
       }
 
       drawWheel(currentAngle);
@@ -306,6 +309,7 @@ export default function Wheel({
       if (progress < 1) {
         animationFrameRef.current = requestAnimationFrame(animate);
       } else {
+        stopMotion();
         // Spin finished
         const normalizedDeg = (360 - ((currentAngle * 180) / Math.PI) % 360) % 360;
         const sliceArc = 360 / SLICE_CONFIGS.length;
@@ -320,6 +324,7 @@ export default function Wheel({
     animationFrameRef.current = requestAnimationFrame(animate);
 
     return () => {
+      stopMotion();
       void releaseWakeLock();
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -374,6 +379,7 @@ export default function Wheel({
     isDraggingRef.current = true;
     dragStartAngleRef.current = angle;
     dragBaseRotationRef.current = currentRotationRef.current;
+    lastPegCrossedRef.current = Math.floor(currentRotationRef.current * 14 / (2 * Math.PI));
     dragCenterRef.current = { cx, cy };
     dragPointsRef.current = [{ angle, time: performance.now() }];
     totalDragDisplacementRef.current = 0;
@@ -402,8 +408,7 @@ export default function Wheel({
     }
 
     // Flapper peg deflection during manual drag
-    const currentDeg = ((newRotation * 180) / Math.PI) % 360;
-    const pegIndex = Math.floor((Math.abs(currentDeg) * 14) / 360);
+    const pegIndex = Math.floor(newRotation * 14 / (2 * Math.PI));
     if (pegIndex !== lastPegCrossedRef.current) {
       lastPegCrossedRef.current = pegIndex;
       playWheelTick(0.2);
@@ -532,6 +537,7 @@ export default function Wheel({
             variant="primary"
             size="lg"
             glow
+            sound={false}
             onClick={handleCenterClick}
             className="w-full shadow-amber-500/30"
           >

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { motion, AnimatePresence, type PanInfo } from 'motion/react';
 import {
   Swords,
@@ -38,6 +38,8 @@ import BottomNav, { type LobbyTab } from './navigation/BottomNav';
 import CategoryCharacter from './characters/CategoryCharacter';
 import GameWelcome from './characters/GameWelcome';
 import CharacterShowcase from './characters/CharacterShowcase';
+import NotificationSettings from './ui/NotificationSettings';
+import type { usePushNotifications } from '../hooks/usePushNotifications';
 
 
 export type AccountSession = AccountSummary & { token: string };
@@ -47,6 +49,8 @@ type Invitation = InvitationSummary;
 type Match = GameListResponse['matches'][number];
 
 interface LobbyProps {
+  push: ReturnType<typeof usePushNotifications>;
+  onInstallGuide: () => void;
   account: AccountSession | null;
   onAuth: (account: AccountSession) => void;
   onLogout: () => void;
@@ -84,6 +88,8 @@ function getAvatarGradient(name: string): string {
 const TABS: LobbyTab[] = ['matches', 'players', 'champions', 'packs'];
 
 export default function Lobby({
+  push,
+  onInstallGuide,
   account,
   onAuth,
   onLogout,
@@ -141,13 +147,16 @@ export default function Lobby({
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<LobbyTab>('matches');
+  const activeToken = useRef(account?.token);
+  activeToken.current = account?.token;
+  const dashboardGeneration = useRef(0);
 
   const authFetch = useCallback(
     async (path: string, init: RequestInit = {}) => {
       const headers = new Headers(init.headers);
       if (account) headers.set('Authorization', `Bearer ${account.token}`);
       const response = await fetch(apiUrl(path), { ...init, headers });
-      if (response.status === 401) {
+      if (response.status === 401 && activeToken.current === account?.token) {
         onLogout();
         throw new Error('Your session has expired. Please log in again.');
       }
@@ -157,7 +166,9 @@ export default function Lobby({
   );
 
   const refreshDashboard = useCallback(async () => {
-    if (!account) return;
+    if (!account || !navigator.onLine) return;
+    const generation = ++dashboardGeneration.current;
+    const current = () => activeToken.current === account.token && dashboardGeneration.current === generation;
     setIsRefreshing(true);
     try {
       const [playerData, inviteData, matchData] = await Promise.all([
@@ -165,13 +176,14 @@ export default function Lobby({
         authFetch('/api/invitations').then((res) => readResponse<{ invitations: Invitation[] }>(res)),
         authFetch('/api/games').then((res) => readResponse<GameListResponse>(res)),
       ]);
+      if (!current()) return;
       setPlayers(playerData.players);
       setInvitations(inviteData.invitations);
       setMatches(matchData.matches);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Could not refresh matches', 'error');
+      if (current()) showToast(error instanceof Error ? error.message : 'Could not refresh matches', 'error');
     } finally {
-      setIsRefreshing(false);
+      if (current()) setIsRefreshing(false);
     }
   }, [account, authFetch, showToast]);
 
@@ -191,8 +203,11 @@ export default function Lobby({
   // Periodic match polling
   useEffect(() => {
     if (!account) return;
-    const interval = window.setInterval(() => void refreshDashboard(), 10_000);
-    return () => window.clearInterval(interval);
+    const resume = () => { if (document.visibilityState === 'visible') void refreshDashboard(); };
+    const interval = window.setInterval(resume, 10_000);
+    window.addEventListener('online', resume);
+    document.addEventListener('visibilitychange', resume);
+    return () => { window.clearInterval(interval); window.removeEventListener('online', resume); document.removeEventListener('visibilitychange', resume); dashboardGeneration.current++; };
   }, [account, refreshDashboard]);
 
   // App Badge synchronization
@@ -201,8 +216,8 @@ export default function Lobby({
     const myTurnCount = matches.filter(
       (m) => m.status === 'IN_PROGRESS' && m.currentTurn.id === account.id
     ).length;
-    void setAppBadge(myTurnCount);
-  }, [account, matches]);
+    void setAppBadge(myTurnCount + invitations.length);
+  }, [account, matches, invitations]);
 
   const fetchDirectory = useCallback(async () => {
     setDirectoryLoading(true);
@@ -531,6 +546,7 @@ export default function Lobby({
             {activeTab === 'matches' && (
               <div className="flex flex-col gap-3">
                 <GameWelcome compact />
+                <NotificationSettings push={push} onInstallGuide={onInstallGuide} />
                 <button type="button" className="play-cta" onClick={() => { playButtonPop(); setActiveTab('players'); }}><Swords size={22} /> Challenge a friend <ChevronRight size={22} /></button>
                 <div className="flex items-center justify-between pt-1">
                   <h3 className="text-xs uppercase font-extrabold text-slate-400 tracking-wider flex items-center gap-1.5">

@@ -115,11 +115,21 @@ export function useGameSync({ gameId, accountId, sessionToken, onUnauthorized, i
     const pollTimer = window.setInterval(() => {
       if (!connectedRef.current && !matchComplete()) void refresh();
     }, 5000);
+    const resume = () => {
+      if (stopped || !current() || document.visibilityState !== 'visible') return;
+      void refresh();
+      // Restart a stream that the mobile OS may have suspended.
+      if (!matchComplete()) controller?.abort();
+    };
+    window.addEventListener('online', resume);
+    document.addEventListener('visibilitychange', resume);
     return () => {
       stopped = true;
       controller?.abort();
       window.clearTimeout(retryTimer);
       window.clearInterval(pollTimer);
+      window.removeEventListener('online', resume);
+      document.removeEventListener('visibilitychange', resume);
     };
   }, [gameId, sessionToken, current, authFetch, applyState, refresh, onUnauthorized]);
 
@@ -128,6 +138,7 @@ export function useGameSync({ gameId, accountId, sessionToken, onUnauthorized, i
     try {
       const res = await authFetch('/api/games/' + encodeURIComponent(gameId) + '/' + name, {
         method: 'POST',
+        signal: AbortSignal.timeout(8000),
         ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       });
       if (!res.ok) { await failure(res); void refresh(); return null; }
