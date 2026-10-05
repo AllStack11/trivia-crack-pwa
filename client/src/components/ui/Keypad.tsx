@@ -94,7 +94,7 @@ export default function Keypad({
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
   return (
-    <div className="flex flex-col items-center justify-center w-full max-w-xs mx-auto py-2">
+    <div className="pin-keypad flex flex-col items-center justify-center w-full max-w-xs mx-auto py-2">
       {/* Title & Subtitle */}
       {title && (
         <h4 className="text-base font-semibold text-white mb-1 text-center">{title}</h4>

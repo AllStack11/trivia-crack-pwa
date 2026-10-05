@@ -161,3 +161,12 @@ body { background: #c5eee8; font-family: 'Trebuchet MS', 'Arial Rounded MT Bold'
   .game-header button { width: 36px; min-height: 44px; }
   .game-welcome { padding-inline: 16px; }
 }
+
+/* Keypad labels must remain visible on the light sheet, including touch feedback. */
+.trivia-app .pin-keypad button { color: #24495a; }
+.trivia-app .pin-keypad button:hover:not(:disabled) { background-color: #edf7f4; }
+.trivia-app .pin-keypad button:active:not(:disabled) {
+  background-color: #4f46e5;
+  border-color: #818cf8;
+  color: white;
+}
