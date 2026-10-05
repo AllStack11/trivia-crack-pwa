@@ -74,27 +74,62 @@ interface Delivery {
 }
 
 async function notification(db: AppDatabase, row: Delivery): Promise<PushNotificationPayload | null> {
+  let playerName = '';
   if (row.kind === 'invitation') {
-    if (!await db.queryFirst("SELECT id FROM game_invitations WHERE id = ? AND recipient_id = ? AND status = 'PENDING'", [row.resource_id, row.user_id])) return null;
+    const invite = await db.queryFirst<{ id: string; sender_username: string | null }>(
+      `SELECT gi.id, u.username AS sender_username
+       FROM game_invitations gi
+       LEFT JOIN users u ON u.id = gi.sender_id
+       WHERE gi.id = ? AND gi.recipient_id = ? AND gi.status = 'PENDING'`,
+      [row.resource_id, row.user_id]
+    );
+    if (!invite) return null;
+    playerName = invite.sender_username || '';
   } else if (row.kind !== 'test') {
-    const game = await db.queryFirst<{ status: string; current_turn_player_id: string }>(
-      'SELECT status, current_turn_player_id FROM games WHERE id = ? AND (player1_id = ? OR player2_id = ?)', [row.resource_id, row.user_id, row.user_id]);
+    const game = await db.queryFirst<{ status: string; current_turn_player_id: string; opponent_username: string | null }>(
+      `SELECT g.status, g.current_turn_player_id, u.username AS opponent_username
+       FROM games g
+       LEFT JOIN users u ON u.id = CASE WHEN g.player1_id = ? THEN g.player2_id ELSE g.player1_id END
+       WHERE g.id = ? AND (g.player1_id = ? OR g.player2_id = ?)`,
+      [row.user_id, row.resource_id, row.user_id, row.user_id]
+    );
     if (!game || (row.kind === 'completed' ? game.status !== 'COMPLETED' : game.status !== 'IN_PROGRESS' || game.current_turn_player_id !== row.user_id)) return null;
+    playerName = game.opponent_username || '';
   }
   const count = await db.queryFirst<{ n: number }>(`SELECT
     (SELECT count(*) FROM game_invitations WHERE recipient_id = ? AND status = 'PENDING') +
     (SELECT count(*) FROM games WHERE status = 'IN_PROGRESS' AND current_turn_player_id = ? AND (player1_id = ? OR player2_id = ?)) AS n`,
     [row.user_id, row.user_id, row.user_id, row.user_id]);
-  const messages: Record<string, [string, string]> = {
-    invitation: ['New invitation', 'Open Trivia Clash to accept or decline.'],
-    accepted: ['Invitation accepted', 'Your match is ready. You play first!'],
-    turn: ['Your turn!', 'Your Trivia Clash match is waiting for you.'],
-    completed: ['Match complete', 'Open Trivia Clash to see the result.'],
-    test: ['Notifications are working', 'This is your Trivia Clash test notification.']
-  };
-  const [title, body] = messages[row.kind];
-  return { accountId: row.user_id, title, body, url: row.kind === 'invitation' || row.kind === 'test' ? '/' : `/game/${encodeURIComponent(row.resource_id)}`,
-    tag: row.kind === 'test' ? 'test' : `${row.kind === 'invitation' ? 'invite' : 'game'}:${row.resource_id}`, badgeCount: count?.n || 0 };
+
+  let title = 'Trivia Clash';
+  let body = 'Open the app to check your matches.';
+
+  if (row.kind === 'invitation') {
+    title = playerName ? `New challenge from ${playerName}` : 'New invitation';
+    body = playerName ? `${playerName} challenged you to a trivia duel! Open Trivia Clash to accept or decline.` : 'Open Trivia Clash to accept or decline.';
+  } else if (row.kind === 'accepted') {
+    title = 'Invitation accepted';
+    body = playerName ? `${playerName} accepted your challenge! Your match is ready. You play first!` : 'Your match is ready. You play first!';
+  } else if (row.kind === 'turn') {
+    title = playerName ? `Your turn vs. ${playerName}!` : 'Your turn!';
+    body = playerName ? `Your match against ${playerName} is waiting for you.` : 'Your Trivia Clash match is waiting for you.';
+  } else if (row.kind === 'completed') {
+    title = playerName ? `Match complete vs. ${playerName}` : 'Match complete';
+    body = playerName ? `Your match against ${playerName} is finished. Open Trivia Clash to see the result.` : 'Open Trivia Clash to see the result.';
+  } else if (row.kind === 'test') {
+    title = 'Notifications are working';
+    body = 'This is your Trivia Clash test notification.';
+  }
+
+  const url = row.kind === 'invitation'
+    ? `/invites?id=${encodeURIComponent(row.resource_id)}`
+    : row.kind === 'test'
+    ? '/'
+    : `/game/${encodeURIComponent(row.resource_id)}`;
+
+  const tag = row.kind === 'test' ? 'test' : `${row.kind === 'invitation' ? 'invite' : 'game'}:${row.resource_id}`;
+
+  return { accountId: row.user_id, title, body, url, tag, badgeCount: count?.n || 0 };
 }
 
 export type PushTransport = (endpoint: string, payload: PushNotificationPayload, subscription: PushSubscriptionRequest, env: PushEnvironment, ttl: number, topic: string) => Promise<number>;

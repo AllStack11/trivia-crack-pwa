@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trivia-clash-v7';
+const CACHE_NAME = 'trivia-clash-v8';
 const CACHE_PREFIX = 'trivia-clash-';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json', '/icons/app-192-crown-v1.png', '/icons/app-512-crown-v1.png',
   '/icons/app-maskable-512-crown-v1.png', '/icons/apple-touch-icon-crown-v1.png', '/icons/favicon-32-crown-v1.png'];
@@ -94,7 +94,13 @@ self.addEventListener('message', event => {
 function safeUrl(value) {
   try {
     const url = new URL(typeof value === 'string' ? value : '/', self.location.origin);
-    return url.origin === self.location.origin && (url.pathname === '/' || /^\/game\/[A-Za-z0-9_%.-]+$/.test(url.pathname)) ? url.href : self.location.origin + '/';
+    const valid = url.origin === self.location.origin && (
+      url.pathname === '/' ||
+      url.pathname === '/invites' ||
+      url.pathname === '/invitations' ||
+      /^\/game\/[A-Za-z0-9_%.-]+$/.test(url.pathname)
+    );
+    return valid ? url.href : self.location.origin + '/';
   } catch { return self.location.origin + '/'; }
 }
 
@@ -124,7 +130,12 @@ self.addEventListener('notificationclick', event => {
     const url = owner && data?.accountId === owner ? safeUrl(data.url) : self.location.origin + '/';
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const existing = windows.find(client => new URL(client.url).origin === self.location.origin);
-    if (existing) { await existing.navigate(url); await existing.focus(); }
-    else await self.clients.openWindow(url);
+    if (existing) {
+      try { await existing.navigate(url); } catch { /* Ignore navigate rejection */ }
+      try { existing.postMessage?.({ type: 'NAVIGATE', url }); } catch { /* Ignore postMessage error */ }
+      await existing.focus();
+    } else {
+      await self.clients.openWindow(url);
+    }
   })());
 });

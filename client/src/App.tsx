@@ -14,6 +14,7 @@ import QuestionView from './components/QuestionView';
 import Wheel from './components/Wheel';
 import { useGameSync } from './hooks/useGameSync';
 import type { AccountSession } from './components/Lobby';
+import type { LobbyTab } from './components/navigation/BottomNav';
 import { apiUrl } from './utils/api';
 import {
   playAudioCue,
@@ -47,6 +48,8 @@ function AppContent() {
 
   const [view, setView] = useState<AppView>('LOBBY');
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
+  const [lobbyTab, setLobbyTab] = useState<LobbyTab>('matches');
+  const [highlightedInviteId, setHighlightedInviteId] = useState<string | null>(null);
   const [account, setAccount] = useState<AccountSession | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
@@ -55,6 +58,48 @@ function AppContent() {
   const appUpdate = useAppUpdate();
   const [muted, setMuted] = useState<boolean>(isAudioMuted());
   const [showIOSSheet, setShowIOSSheet] = useState<boolean>(false);
+
+  const applyRoute = useCallback((pathname: string, search: string = '') => {
+    if (pathname.startsWith('/game/')) {
+      const gameId = decodeURIComponent(pathname.slice('/game/'.length));
+      if (gameId) {
+        setActiveGameId(gameId);
+        setView('GAME');
+        setIsWheelSpinning(false);
+        setLandedCategoryName(null);
+        clearTimeout(resultReviewTimerRef.current);
+        lastReviewedResultKeyRef.current = null;
+        setActiveReviewResult(null);
+        return;
+      }
+    }
+    if (pathname === '/packs') {
+      setActiveGameId(null);
+      setView('PACK_CREATOR');
+      return;
+    }
+    if (pathname === '/invites' || pathname === '/invitations') {
+      const params = new URLSearchParams(search);
+      const inviteId = params.get('id') || params.get('invite');
+      setActiveGameId(null);
+      setView('LOBBY');
+      setLobbyTab('players');
+      setHighlightedInviteId(inviteId || null);
+      return;
+    }
+    const params = new URLSearchParams(search);
+    const tabParam = params.get('tab');
+    if (tabParam === 'players' || tabParam === 'matches' || tabParam === 'champions' || tabParam === 'packs') {
+      setActiveGameId(null);
+      setView('LOBBY');
+      setLobbyTab(tabParam as LobbyTab);
+      const inviteId = params.get('id') || params.get('invite');
+      setHighlightedInviteId(inviteId || null);
+      return;
+    }
+    setActiveGameId(null);
+    setView('LOBBY');
+  }, []);
 
   // Wheel animation control state to prevent skipping the spinner
   const [isWheelSpinning, setIsWheelSpinning] = useState<boolean>(false);
@@ -95,12 +140,7 @@ function AppContent() {
               };
               if (mounted) {
                 setAccount({ ...data.account, token: saved.token });
-                if (window.location.pathname.startsWith('/game/')) {
-                  setActiveGameId(
-                    decodeURIComponent(window.location.pathname.slice('/game/'.length))
-                  );
-                  setView('GAME');
-                } else if (window.location.pathname === '/packs') setView('PACK_CREATOR');
+                applyRoute(window.location.pathname, window.location.search);
               }
             } else if (response.status === 401) {
               localStorage.removeItem('trivia_clash_account');
@@ -138,11 +178,7 @@ function AppContent() {
     } catch {
       /* Storage may be unavailable. */
     }
-    if (window.location.pathname.startsWith('/game/')) {
-      const gameId = decodeURIComponent(window.location.pathname.slice('/game/'.length));
-      setActiveGameId(gameId);
-      setView('GAME');
-    } else if (window.location.pathname === '/packs') setView('PACK_CREATOR');
+    applyRoute(window.location.pathname, window.location.search);
   };
 
   const handleLogout = useCallback(async () => {
@@ -180,22 +216,28 @@ function AppContent() {
 
   useEffect(() => {
     const handlePopState = () => {
-      const path = window.location.pathname;
-      if (path === '/packs') setView('PACK_CREATOR');
-      else if (path.startsWith('/game/')) {
-        const gameId = path.slice('/game/'.length);
-        if (gameId) {
-          setActiveGameId(decodeURIComponent(gameId));
-          setView('GAME');
-        }
-      } else {
-        setActiveGameId(null);
-        setView('LOBBY');
-      }
+      applyRoute(window.location.pathname, window.location.search);
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [applyRoute]);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'NAVIGATE' && typeof event.data.url === 'string') {
+        try {
+          const parsed = new URL(event.data.url, window.location.origin);
+          window.history.pushState(null, '', parsed.pathname + parsed.search);
+          applyRoute(parsed.pathname, parsed.search);
+        } catch {
+          applyRoute(window.location.pathname, window.location.search);
+        }
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handleMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
+  }, [applyRoute]);
 
   const {
     gameState,
@@ -564,6 +606,9 @@ function AppContent() {
                   onLogout={handleLogout}
                   onOpenGame={handleOpenGame}
                   onOpenPackCreator={handleNavigateToPacks}
+                  activeTab={lobbyTab}
+                  onChangeTab={setLobbyTab}
+                  highlightedInviteId={highlightedInviteId}
                 />
                 </>
               )}

@@ -242,3 +242,53 @@ test('all supported providers use high urgency for tests; cleanup errors preserv
     expect(serialized).toContain('network'); expect(serialized).toContain('TypeError');
   } finally { globalThis.fetch = originalFetch; console.warn = originalWarn; console.info = originalInfo; }
 });
+
+test('match notifications include player name and correct target URLs for invites, turns and completions', async () => {
+  await saveSubscription(db, alice.account.id, alice.token, await subscription('alice-dev'));
+  await saveSubscription(db, bob.account.id, bob.token, await subscription('bob-dev'));
+
+  // 1. Invitation notification sent to Bob
+  await sendInvitation(db, alice.account.id, bob.account.id);
+  const invite = (await db.queryFirst<{ id: string }>('SELECT id FROM game_invitations WHERE recipient_id = ?', [bob.account.id]))!;
+  const invitePayloads: PushNotificationPayload[] = [];
+  await drainPushOutbox(db, configured, async (_endpoint, payload) => { invitePayloads.push(payload); return 201; });
+  expect(invitePayloads).toHaveLength(1);
+  expect(invitePayloads[0].accountId).toBe(bob.account.id);
+  expect(invitePayloads[0].title).toBe('New challenge from Alice');
+  expect(invitePayloads[0].body).toContain('Alice');
+  expect(invitePayloads[0].url).toBe(`/invites?id=${encodeURIComponent(invite.id)}`);
+
+  // 2. Acceptance notification sent to Alice
+  const { gameId } = await respondToInvitation(db, invite.id, bob.account.id, 'accept');
+  const acceptPayloads: PushNotificationPayload[] = [];
+  await drainPushOutbox(db, configured, async (_endpoint, payload) => { acceptPayloads.push(payload); return 201; });
+  expect(acceptPayloads).toHaveLength(1);
+  expect(acceptPayloads[0].accountId).toBe(alice.account.id);
+  expect(acceptPayloads[0].title).toBe('Invitation accepted');
+  expect(acceptPayloads[0].body).toContain('Bob');
+  expect(acceptPayloads[0].url).toBe(`/game/${encodeURIComponent(gameId!)}`);
+
+  // 3. Turn notification sent to Bob
+  await commitGameMutation(db, gameId!, 0, [{ sql: 'UPDATE games SET current_turn_player_id = ? WHERE id = ?', params: [bob.account.id, gameId!] }]);
+  const turnPayloads: PushNotificationPayload[] = [];
+  await drainPushOutbox(db, configured, async (_endpoint, payload) => { turnPayloads.push(payload); return 201; });
+  expect(turnPayloads).toHaveLength(1);
+  expect(turnPayloads[0].accountId).toBe(bob.account.id);
+  expect(turnPayloads[0].title).toBe('Your turn vs. Alice!');
+  expect(turnPayloads[0].body).toContain('Alice');
+  expect(turnPayloads[0].url).toBe(`/game/${encodeURIComponent(gameId!)}`);
+
+  // 4. Match completed notification sent to both players
+  await commitGameMutation(db, gameId!, 1, [{ sql: "UPDATE games SET status = 'COMPLETED', winner_id = ?, updated_at = ? WHERE id = ?", params: [bob.account.id, Date.now(), gameId!] }]);
+  const completePayloads: PushNotificationPayload[] = [];
+  await drainPushOutbox(db, configured, async (_endpoint, payload) => { completePayloads.push(payload); return 201; });
+  expect(completePayloads).toHaveLength(2);
+  const aliceComplete = completePayloads.find(p => p.accountId === alice.account.id)!;
+  const bobComplete = completePayloads.find(p => p.accountId === bob.account.id)!;
+  expect(aliceComplete.title).toBe('Match complete vs. Bob');
+  expect(aliceComplete.body).toContain('Bob');
+  expect(aliceComplete.url).toBe(`/game/${encodeURIComponent(gameId!)}`);
+  expect(bobComplete.title).toBe('Match complete vs. Alice');
+  expect(bobComplete.body).toContain('Alice');
+  expect(bobComplete.url).toBe(`/game/${encodeURIComponent(gameId!)}`);
+});

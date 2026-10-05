@@ -93,3 +93,15 @@ test('malformed push payloads and external click destinations produce a safe vis
   await w.dispatch('notificationclick', { notification: { data: { accountId: 'alice', url: 'https://evil.test/token' }, close: () => {} } });
   expect(w.opened).toEqual(['https://trivia.test/']);
 });
+
+test('invitation notification taps navigate to pending match invites and postMessage to existing clients', async () => {
+  const w = worker(); await w.owner('alice');
+  const payload = { accountId: 'alice', title: 'New challenge from Bob', body: 'Bob challenged you to a trivia duel!', url: '/invites?id=inv-123', tag: 'invite:inv-123', badgeCount: 1 };
+  await w.dispatch('push', { data: { json: () => payload } });
+  expect(w.shown[0].title).toBe('New challenge from Bob');
+  const posted: any[] = [];
+  w.windows.push({ url: 'https://trivia.test/', navigate: async (url: string) => { w.navigated.push(url); }, postMessage: (msg: any) => { posted.push(msg); }, focus: async () => {} });
+  await w.dispatch('notificationclick', { notification: { data: w.shown[0].options.data, close: () => {} } });
+  expect(w.navigated).toEqual(['https://trivia.test/invites?id=inv-123']);
+  expect(posted).toEqual([{ type: 'NAVIGATE', url: 'https://trivia.test/invites?id=inv-123' }]);
+});

@@ -56,6 +56,9 @@ interface LobbyProps {
   onLogout: () => void;
   onOpenGame: (gameId: string) => void;
   onOpenPackCreator: () => void;
+  activeTab?: LobbyTab;
+  onChangeTab?: (tab: LobbyTab) => void;
+  highlightedInviteId?: string | null;
 }
 
 async function readResponse<T>(response: Response): Promise<T> {
@@ -95,6 +98,9 @@ export default function Lobby({
   onLogout,
   onOpenGame,
   onOpenPackCreator,
+  activeTab: controlledTab,
+  onChangeTab,
+  highlightedInviteId,
 }: LobbyProps) {
   const { showToast } = useToast();
 
@@ -146,7 +152,12 @@ export default function Lobby({
 
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<LobbyTab>('matches');
+  const [internalTab, setInternalTab] = useState<LobbyTab>(controlledTab ?? 'matches');
+  const activeTab = controlledTab ?? internalTab;
+  const setActiveTab = (tab: LobbyTab) => {
+    setInternalTab(tab);
+    onChangeTab?.(tab);
+  };
   const activeToken = useRef(account?.token);
   activeToken.current = account?.token;
   const dashboardGeneration = useRef(0);
@@ -552,6 +563,71 @@ export default function Lobby({
               <div className="flex flex-col gap-3">
                 <GameWelcome compact />
                 <NotificationSettings push={push} onInstallGuide={onInstallGuide} />
+
+                {/* Incoming Challenges / Pending Matches in Duels Tab */}
+                {invitations.length > 0 && (
+                  <div className="p-4 rounded-3xl bg-amber-950/40 border border-amber-500/50 shadow-xl flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs uppercase font-extrabold text-amber-400 tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Incoming Challenges ({invitations.length})</span>
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playButtonPop();
+                          setActiveTab('players');
+                        }}
+                        className="text-xs font-bold text-amber-300 hover:text-amber-200 flex items-center gap-1"
+                      >
+                        <span>View all</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      {invitations.map((invite) => (
+                        <div
+                          key={invite.id}
+                          className={`p-3 rounded-2xl bg-slate-900/85 border flex items-center justify-between gap-3 ${
+                            invite.id === highlightedInviteId
+                              ? 'border-amber-400 ring-2 ring-amber-400/50 shadow-lg'
+                              : 'border-amber-500/30'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs text-white leading-snug truncate">
+                              <span className="font-extrabold text-amber-300">
+                                {invite.sender.username}
+                              </span>{' '}
+                              challenged you!
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              type="button"
+                              disabled={loadingAction !== null}
+                              onClick={() => void respondToInvitation(invite.id, 'accept')}
+                              className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md active:scale-95 transition-all"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              disabled={loadingAction !== null}
+                              onClick={() => void respondToInvitation(invite.id, 'decline')}
+                              className="py-1.5 px-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white font-semibold text-xs active:scale-95 transition-all"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <button type="button" className="play-cta" onClick={() => { playButtonPop(); setActiveTab('players'); }}><Swords size={22} /> Challenge a friend <ChevronRight size={22} /></button>
                 <div className="flex items-center justify-between pt-1">
                   <h3 className="text-xs uppercase font-extrabold text-slate-400 tracking-wider flex items-center gap-1.5">
@@ -695,40 +771,52 @@ export default function Lobby({
                       <span>Incoming Challenges ({invitations.length})</span>
                     </h3>
 
-                    {invitations.map((invite) => (
-                      <div
-                        key={invite.id}
-                        className="p-4 rounded-3xl bg-amber-950/30 border border-amber-500/40 shadow-xl flex items-center justify-between gap-3"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-xs text-white leading-snug">
-                            <span className="font-extrabold text-amber-300">
-                              {invite.sender.username}
-                            </span>{' '}
-                            challenged you to a trivia duel!
-                          </p>
-                        </div>
+                    {invitations.map((invite) => {
+                      const isHighlighted = invite.id === highlightedInviteId;
+                      return (
+                        <div
+                          key={invite.id}
+                          className={`p-4 rounded-3xl shadow-xl flex items-center justify-between gap-3 transition-all ${
+                            isHighlighted
+                              ? 'bg-amber-900/50 border-2 border-amber-400 ring-2 ring-amber-400/50 shadow-amber-950/60 scale-[1.01]'
+                              : 'bg-amber-950/30 border border-amber-500/40'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            {isHighlighted && (
+                              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] tracking-wider uppercase mb-1">
+                                <span>★</span> Direct Challenge
+                              </div>
+                            )}
+                            <p className="text-xs text-white leading-snug">
+                              <span className="font-extrabold text-amber-300">
+                                {invite.sender.username}
+                              </span>{' '}
+                              challenged you to a trivia duel!
+                            </p>
+                          </div>
 
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <button
-                            type="button"
-                            disabled={loadingAction !== null}
-                            onClick={() => void respondToInvitation(invite.id, 'accept')}
-                            className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md active:scale-95 transition-all"
-                          >
-                            Accept
-                          </button>
-                          <button
-                            type="button"
-                            disabled={loadingAction !== null}
-                            onClick={() => void respondToInvitation(invite.id, 'decline')}
-                            className="py-1.5 px-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white font-semibold text-xs active:scale-95 transition-all"
-                          >
-                            Decline
-                          </button>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              type="button"
+                              disabled={loadingAction !== null}
+                              onClick={() => void respondToInvitation(invite.id, 'accept')}
+                              className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md active:scale-95 transition-all"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              disabled={loadingAction !== null}
+                              onClick={() => void respondToInvitation(invite.id, 'decline')}
+                              className="py-1.5 px-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white font-semibold text-xs active:scale-95 transition-all"
+                            >
+                              Decline
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
