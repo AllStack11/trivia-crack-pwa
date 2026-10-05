@@ -57,13 +57,15 @@ export async function hasSubscription(db: AppDatabase, userId: string, token: st
   return Boolean(await db.queryFirst('SELECT id FROM push_subscriptions WHERE user_id = ? AND session_hash = ?', [userId, await digest(token)]));
 }
 
-export async function enqueueTest(db: AppDatabase, userId: string, token: string): Promise<void> {
+export async function enqueueTest(db: AppDatabase, userId: string, token: string): Promise<string> {
   const sessionHash = await digest(token);
   const now = Date.now();
+  const eventKey = `test:${Math.floor(now / 60000)}`;
   // One test per device per minute; repeat taps cannot grow the outbox unboundedly.
   await db.execute(`INSERT OR IGNORE INTO push_outbox(event_key, subscription_id, kind, resource_id, created_at, expires_at)
     SELECT ?, id, 'test', '', ?, ? FROM push_subscriptions WHERE user_id = ? AND session_hash = ?`,
-    [`test:${Math.floor(now / 60000)}`, now, now + 300000, userId, sessionHash]);
+    [eventKey, now, now + 300000, userId, sessionHash]);
+  return eventKey;
 }
 
 interface Delivery {
@@ -96,24 +98,53 @@ async function notification(db: AppDatabase, row: Delivery): Promise<PushNotific
 }
 
 export type PushTransport = (endpoint: string, payload: PushNotificationPayload, subscription: PushSubscriptionRequest, env: PushEnvironment, ttl: number, topic: string) => Promise<number>;
+// Only fixed categories go into logs. Never include exception messages, URLs or credentials.
+function errorCategory(reason: unknown): string {
+  const name = reason instanceof Error ? reason.name : '';
+  return ['TypeError', 'OperationError', 'InvalidAccessError', 'DataError', 'NotSupportedError', 'TimeoutError', 'AbortError'].includes(name) ? name : 'unknown';
+}
+
 export const sendWebPush: PushTransport = async (endpoint, data, subscription, env, ttl, topic) => {
-  validatePushEndpoint(endpoint);
-  const request = await buildPushPayload({ data: { ...data }, options: { ttl, urgency: 'normal', topic } }, { ...subscription, expirationTime: null },
-    { publicKey: env.VAPID_PUBLIC_KEY!, privateKey: env.VAPID_PRIVATE_KEY!, subject: env.VAPID_SUBJECT! });
-  const response = await fetch(endpoint, { ...request, redirect: 'error', signal: AbortSignal.timeout(10000) });
-  await response.body?.cancel();
-  return response.status;
+  const host = new URL(validatePushEndpoint(endpoint)).hostname;
+  const provider = host === 'web.push.apple.com' ? 'apple' : host === 'fcm.googleapis.com' ? 'google' : host === 'updates.push.services.mozilla.com' ? 'mozilla' : 'windows';
+  let stage = 'encryption';
+  try {
+    const request = await buildPushPayload({ data: { ...data }, options: { ttl, urgency: data.tag === 'test' ? 'high' : 'normal', topic } }, { ...subscription, expirationTime: null },
+      { publicKey: env.VAPID_PUBLIC_KEY!, privateKey: env.VAPID_PRIVATE_KEY!, subject: env.VAPID_SUBJECT! });
+    stage = 'network';
+    // Workers supports only follow/manual. Inspect redirects without forwarding credentials.
+    const response = await fetch(endpoint, { ...request, redirect: 'manual', signal: AbortSignal.timeout(10000) });
+    // Receipt by the push service is authoritative even if stream cleanup fails.
+    await response.body?.cancel().catch(() => {});
+    console.info('Push transport', { provider, status: response.status });
+    return response.status;
+  } catch (reason) {
+    console.warn('Push transport failed', { provider, stage, category: errorCategory(reason) });
+    throw new Error('Push transport failed');
+  }
 };
 
+export interface PushDrainReport {
+  accepted: number;
+  rejected: number;
+  retrying: number;
+  unsubscribed: number;
+}
+interface TestDeliveryScope { userId: string; sessionHash: string; eventKey: string }
+
 /** Bounded, leased work shared by request waitUntil and scheduled recovery. */
-export async function drainPushOutbox(db: AppDatabase, env: PushEnvironment, transport: PushTransport = sendWebPush, now = Date.now()): Promise<void> {
-  if (!pushConfigured(env)) return;
+export async function drainPushOutbox(db: AppDatabase, env: PushEnvironment, transport: PushTransport = sendWebPush, now = Date.now(), testScope?: TestDeliveryScope): Promise<PushDrainReport> {
+  const report: PushDrainReport = { accepted: 0, rejected: 0, retrying: 0, unsubscribed: 0 };
+  if (!pushConfigured(env)) return report;
   await db.batch([
     { sql: 'DELETE FROM auth_sessions WHERE expires_at <= ?', params: [now] },
     { sql: 'DELETE FROM push_outbox WHERE expires_at <= ? OR attempts >= 5', params: [now] }
   ]);
   const candidates = await db.query<{ event_key: string; subscription_id: string }>(
-    'SELECT event_key, subscription_id FROM push_outbox WHERE next_attempt_at <= ? AND lease_until <= ? ORDER BY created_at LIMIT 20', [now, now]);
+    testScope
+      ? "SELECT o.event_key, o.subscription_id FROM push_outbox o JOIN push_subscriptions s ON s.id = o.subscription_id WHERE o.next_attempt_at <= ? AND o.lease_until <= ? AND o.kind = 'test' AND o.event_key = ? AND s.user_id = ? AND s.session_hash = ? ORDER BY o.created_at LIMIT 20"
+      : 'SELECT event_key, subscription_id FROM push_outbox WHERE next_attempt_at <= ? AND lease_until <= ? ORDER BY created_at LIMIT 20',
+    testScope ? [now, now, testScope.eventKey, testScope.userId, testScope.sessionHash] : [now, now]);
   // At most four network requests at a time; do not monopolize the Worker.
   for (let start = 0; start < candidates.length; start += 4) {
     await Promise.all(candidates.slice(start, start + 4).map(async candidate => {
@@ -141,13 +172,19 @@ export async function drainPushOutbox(db: AppDatabase, env: PushEnvironment, tra
         }
       } catch { /* Never log endpoints, payloads, keys, or sender errors containing credentials. */ }
       if (status === 404 || status === 410) {
+        report.unsubscribed++;
         await db.execute('DELETE FROM push_subscriptions WHERE id = ?', [row.subscription_id]);
-      } else if ((status >= 200 && status < 300) || (status >= 400 && status < 500 && status !== 408 && status !== 429) || row.attempts >= 5) {
+      } else if ((status >= 200 && status < 400) || (status >= 400 && status < 500 && status !== 408 && status !== 429) || row.attempts >= 5) {
+        if (status >= 200 && status < 300) report.accepted++;
+        else report.rejected++;
         await db.execute('DELETE FROM push_outbox WHERE event_key = ? AND subscription_id = ? AND lease_id = ?', [row.event_key, row.subscription_id, lease]);
       } else {
+        report.retrying++;
+        console.warn('Push delivery retry scheduled', { status, attempt: row.attempts });
         await db.execute('UPDATE push_outbox SET lease_id = NULL, lease_until = 0, next_attempt_at = ? WHERE event_key = ? AND subscription_id = ? AND lease_id = ?',
           [now + Math.min(900000, 30000 * 2 ** (row.attempts - 1)), row.event_key, row.subscription_id, lease]);
       }
     }));
   }
+  return report;
 }

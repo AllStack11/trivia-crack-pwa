@@ -38,7 +38,7 @@ export default function IOSInstallSheet({ isOpen, onClose }: IOSInstallSheetProp
       icon={<Smartphone className="w-5 h-5" />}
     >
       <div className="flex flex-col gap-4 py-2">
-        <img src="/icons/apple-touch-icon.png" alt="Trivia Clash app icon" width="64" height="64" className="rounded-2xl mx-auto" />
+        <img src="/icons/apple-touch-icon-crown-v1.png" alt="Trivia Clash app icon" width="64" height="64" className="rounded-2xl mx-auto" />
         <p className="text-xs text-slate-300 leading-relaxed">
           Install Trivia Clash to your home screen for full-screen play and quick launch. Open the installed app to enable notifications. Live matches need an internet connection.
         </p>

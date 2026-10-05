@@ -65,7 +65,7 @@ export default function PWAInstallBanner({
         <div className="bg-slate-900/95 backdrop-blur-xl border border-indigo-500/40 rounded-2xl p-3.5 shadow-2xl flex items-center justify-between gap-3 shadow-indigo-950/50">
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600 to-amber-500 flex items-center justify-center shadow-md flex-shrink-0">
-              <img src="/icons/app-192.png" alt="" className="w-11 h-11 rounded-xl" />
+              <img src="/icons/app-192-crown-v1.png" alt="" className="w-11 h-11 rounded-xl" />
             </div>
             <div className="min-w-0">
               <h4 className="text-xs font-bold text-white tracking-tight flex items-center gap-1.5 truncate">

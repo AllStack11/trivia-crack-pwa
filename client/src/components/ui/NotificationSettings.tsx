@@ -22,7 +22,7 @@ export default function NotificationSettings({ push, onInstallGuide }: {
     <div className="flex flex-wrap gap-2 mt-3">
       {push.state === 'disabled' && <button type="button" disabled={push.busy} onClick={() => void push.enable()} className="rounded-xl bg-indigo-600 text-white px-3 text-sm font-bold">Enable notifications</button>}
       {push.state === 'enabled' && <>
-        <button type="button" disabled={push.busy} onClick={() => void push.test().then(sent => { if (sent) showToast('Test queued. Look for a device notification; repeat tests are limited to once per minute.', 'info'); })} className="rounded-xl bg-indigo-600 text-white px-3 text-sm font-bold">Send test</button>
+        <button type="button" disabled={push.busy} onClick={() => void push.test().then(sent => { if (sent) showToast(sent === 'accepted' ? 'Test accepted by your notification service. Check your device notifications.' : 'Test is waiting for delivery. Please wait before trying again.', 'info'); })} className="rounded-xl bg-indigo-600 text-white px-3 text-sm font-bold">Send test</button>
         <button type="button" disabled={push.busy} onClick={() => void push.disable()} className="rounded-xl border border-slate-600 px-3 text-sm">Turn off</button>
       </>}
       {push.state === 'install-required' && <button type="button" onClick={onInstallGuide} className="rounded-xl border border-slate-600 px-3 text-sm">Installation guide</button>}

@@ -5,8 +5,8 @@ compatibility_flags = ["nodejs_compat"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "triviaclash-db-v2"
-database_id = "50b2d81d-1956-413e-8e59-fb69decf0aca"
+database_name = "triviaclash-db-v3"
+database_id = "bc0e5a84-b5d5-4ae2-bdac-2a198edfd9db"
 migrations_dir = "src/db/migrations"
 
 [triggers]

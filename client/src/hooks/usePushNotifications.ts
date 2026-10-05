@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PushConfigResponse } from '../../../shared/src/index';
+import type { PushConfigResponse, PushTestResponse } from '../../../shared/src/index';
 import type { AccountSession } from '../components/Lobby';
 import { applicationServerKey, detachPush, PUSH_PREFERENCE_KEY, pushOwner, pushRequest, serializePush, setPushOwner } from '../utils/push';
 
@@ -107,8 +107,22 @@ export function usePushNotifications(account: AccountSession | null) {
   const test = async () => {
     if (!account || busy) return;
     setBusy(true); setError(null);
-    try { await pushRequest(account.token, '/api/push/test', { method: 'POST' }); return true; }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not send test notification'); return false; }
+    try {
+      const result: PushTestResponse = await pushRequest(account.token, '/api/push/test', { method: 'POST' });
+      if (current.current?.token !== account.token) return null;
+      if (result.outcome === 'unsubscribed') {
+        await serializePush(() => detachPush(account.token));
+        setState('disabled');
+        setError('This device subscription expired. Enable notifications again.');
+        return null;
+      }
+      if (result.outcome === 'rejected' || result.outcome === 'retrying') {
+        setError(result.outcome === 'rejected' ? 'The notification service rejected the test. Please try again after notification setup is fixed.' : 'The test could not be delivered yet. We will retry automatically.');
+        return null;
+      }
+      return result.outcome;
+    }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not send test notification'); return null; }
     finally { setBusy(false); }
   };
   return { state, busy, error, enable, disable, test, retry: () => serializePush(reconcile) };

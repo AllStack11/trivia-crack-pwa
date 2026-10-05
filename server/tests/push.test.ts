@@ -182,3 +182,63 @@ test('sender uses RFC8291 aes128gcm; ciphertext decrypts and VAPID signature ver
   expect(plain[end]).toBe(2);
   expect(JSON.parse(new TextDecoder().decode(plain.slice(0, end)))).toEqual(data);
 });
+
+test('scoped test drain reports results without delivering other sessions or accounts', async () => {
+  const otherSession = await login(db, 'Alice');
+  await saveSubscription(db, alice.account.id, alice.token, await subscription('this-session'));
+  await saveSubscription(db, alice.account.id, otherSession.token, await subscription('other-session'));
+  await saveSubscription(db, bob.account.id, bob.token, await subscription('other-account'));
+  const eventKey = await enqueueTest(db, alice.account.id, alice.token);
+  await enqueueTest(db, alice.account.id, otherSession.token);
+  await enqueueTest(db, bob.account.id, bob.token);
+  const scope = { userId: alice.account.id, sessionHash: await digest(alice.token), eventKey };
+  let sends = 0;
+  const report = await drainPushOutbox(db, configured, async (endpoint) => {
+    sends++; expect(endpoint.endsWith('/this-session')).toBe(true); return 201;
+  }, Date.now(), scope);
+  expect(report).toEqual({ accepted: 1, rejected: 0, retrying: 0, unsubscribed: 0 });
+  expect(sends).toBe(1); expect(await outbox()).toHaveLength(2);
+  for (const [status, expected] of [[503, 'retrying'], [302, 'rejected'], [403, 'rejected'], [410, 'unsubscribed']] as const) {
+    await enqueueTest(db, alice.account.id, alice.token);
+    await db.execute('UPDATE push_outbox SET next_attempt_at = 0');
+    const result = await drainPushOutbox(db, configured, async () => status, Date.now(), scope);
+    expect(result[expected]).toBe(1);
+    expect(await outbox()).toHaveLength(status === 503 ? 3 : 2);
+  }
+});
+
+test('test API reports failed encryption instead of claiming success', async () => {
+  await saveSubscription(db, alice.account.id, alice.token, await subscription('test-api'));
+  const response = await app.request('/api/push/test', { method: 'POST', headers: { Authorization: `Bearer ${alice.token}` } }, { DB: asD1(db), ...configured });
+  expect(response.status).toBe(202);
+  expect(await response.json()).toEqual({ outcome: 'retrying' });
+  expect((await db.queryFirst<{ attempts: number }>('SELECT attempts FROM push_outbox'))!.attempts).toBe(1);
+});
+
+test('all supported providers use high urgency for tests; cleanup errors preserve acceptance and diagnostics omit secrets', async () => {
+  const signing = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  const jwk = await crypto.subtle.exportKey('jwk', signing.privateKey);
+  const env = { VAPID_PUBLIC_KEY: b64(new Uint8Array(await crypto.subtle.exportKey('raw', signing.publicKey))), VAPID_PRIVATE_KEY: jwk.d!, VAPID_SUBJECT: 'mailto:test@example.com' };
+  const sub = await subscription('private-endpoint');
+  const data = { accountId: 'a', title: 'Test', body: 'Test', url: '/', tag: 'test', badgeCount: 0 };
+  const originalFetch = globalThis.fetch; const originalWarn = console.warn; const originalInfo = console.info;
+  const logs: unknown[] = [];
+  console.warn = (...args) => { logs.push(args); }; console.info = (...args) => { logs.push(args); };
+  try {
+    for (const host of ['web.push.apple.com', 'fcm.googleapis.com', 'updates.push.services.mozilla.com', 'wns2.notify.windows.com']) {
+      const endpoint = `https://${host}/private-endpoint`;
+      globalThis.fetch = (async (url, init) => {
+        expect(url).toBe(endpoint); expect(init!.method?.toUpperCase()).toBe('POST');
+        expect(init!.redirect).toBe('manual');
+        expect(new Headers(init!.headers).get('urgency')).toBe('high');
+        return { status: 201, body: { cancel: async () => { throw new Error('cleanup failed'); } } } as unknown as Response;
+      }) as typeof fetch;
+      expect(await sendWebPush(endpoint, data, { ...sub, endpoint }, env, 300, 'test')).toBe(201);
+    }
+    globalThis.fetch = (async () => { throw new TypeError(`${sub.endpoint} ${sub.keys.auth} ${env.VAPID_PRIVATE_KEY}`); }) as typeof fetch;
+    await expect(sendWebPush(sub.endpoint, data, sub, env, 300, 'test')).rejects.toThrow('Push transport failed');
+    const serialized = JSON.stringify(logs);
+    for (const secret of [sub.endpoint, sub.keys.auth, sub.keys.p256dh, env.VAPID_PRIVATE_KEY]) expect(serialized).not.toContain(secret);
+    expect(serialized).toContain('network'); expect(serialized).toContain('TypeError');
+  } finally { globalThis.fetch = originalFetch; console.warn = originalWarn; console.info = originalInfo; }
+});

@@ -5,7 +5,7 @@ A mobile-first Progressive Web App (PWA) clone of Trivia Crack built for friends
 ## Live Production Deployment (Cloudflare)
 - **Frontend PWA (Cloudflare Workers)**: [https://trivia-clash.saadmankabir95.workers.dev](https://trivia-clash.saadmankabir95.workers.dev)
 - **Backend API (Cloudflare Workers)**: [https://trivia-clash-server.saadmankabir95.workers.dev](https://trivia-clash-server.saadmankabir95.workers.dev)
-- **Edge Database (Cloudflare D1)**: `triviaclash-db-v2` (`50b2d81d-1956-413e-8e59-fb69decf0aca`)
+- **Edge Database (Cloudflare D1)**: `triviaclash-db-v3` (`bc0e5a84-b5d5-4ae2-bdac-2a198edfd9db`)
 
 ## Features
 - **Iconic 7-Slice Wheel**: Physics-based Canvas spinning wheel with decelerating cubic easing curve and deflector flapper with sound ticks and haptic feedback.
@@ -74,6 +74,8 @@ bun test
 ```
 Runs engine rules (including concurrent-action protection, atomic rollback, server-enforced deadlines, fallback exhaustion and database-backed SSE), account/session and game-membership authorization boundaries, invitation transitions, valid pack import/export, and OpenTDB decoding.
 
+Push tests also run the real sender inside the Workers runtime with synthetic subscriptions for Apple, Google, Mozilla, and Windows. Native Node is required for this regression. The notification test endpoint reports push-service acceptance or delivery failure; acceptance does not prove that the OS displayed an alert. See [mobile PWA setup and delivery verification](docs/mobile-pwa-plan.md).
+
 ---
 
 ## Deploying to Cloudflare (100% Free Tier)
@@ -84,10 +86,10 @@ Runs engine rules (including concurrent-action protection, atomic rollback, serv
 cd server
 
 # Create a fresh D1 database and put its returned ID in wrangler.toml
-npx wrangler d1 create triviaclash-db-v2
+npx wrangler d1 create triviaclash-db-v3
 
 # Initialize the complete schema in the fresh database
-npx wrangler d1 migrations apply triviaclash-db-v2 --remote
+npx wrangler d1 migrations apply triviaclash-db-v3 --remote
 
 # Deploy Worker
 npx wrangler deploy

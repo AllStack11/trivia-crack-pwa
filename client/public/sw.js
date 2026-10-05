@@ -1,7 +1,7 @@
-const CACHE_NAME = 'trivia-clash-v5';
+const CACHE_NAME = 'trivia-clash-v7';
 const CACHE_PREFIX = 'trivia-clash-';
-const STATIC_ASSETS = ['/', '/index.html', '/manifest.json', '/icons/app-192.png', '/icons/app-512.png',
-  '/icons/app-maskable-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-32.png'];
+const STATIC_ASSETS = ['/', '/index.html', '/manifest.json', '/icons/app-192-crown-v1.png', '/icons/app-512-crown-v1.png',
+  '/icons/app-maskable-512-crown-v1.png', '/icons/apple-touch-icon-crown-v1.png', '/icons/favicon-32-crown-v1.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -107,7 +107,7 @@ self.addEventListener('push', event => {
     const count = belongs && Number.isSafeInteger(payload.badgeCount) ? Math.max(0, payload.badgeCount) : 0;
     await self.registration.showNotification(belongs && typeof payload.title === 'string' ? payload.title : 'Trivia Clash', {
       body: belongs && typeof payload.body === 'string' ? payload.body : 'Open the app to check your matches.',
-      icon: '/icons/app-192.png',
+      icon: '/icons/app-192-crown-v1.png',
       tag: belongs && typeof payload.tag === 'string' ? payload.tag : 'trivia-clash',
       data: { url: belongs ? safeUrl(payload.url) : self.location.origin + '/', accountId: belongs ? owner : null }
     });

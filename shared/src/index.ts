@@ -330,3 +330,7 @@ export interface PushNotificationPayload {
   badgeCount: number;
 }
 
+
+export interface PushTestResponse {
+  outcome: 'accepted' | 'retrying' | 'rejected' | 'queued' | 'unsubscribed';
+}

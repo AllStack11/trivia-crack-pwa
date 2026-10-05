@@ -11,6 +11,7 @@ import {
   type ExpandPackRequest,
   type GameStateSync,
   type QuestionPackExport,
+  type PushTestResponse,
   type SpinResponse
 } from '../../shared/src/index';
 import type { CloudflareD1Database } from './db/database';
@@ -22,7 +23,7 @@ import {
   resignGame,
   spinWheel
 } from './services/gameEngine';
-import { getSession, listDirectory, listPlayers, login, logout, register, RegistrationError } from './services/authService';
+import { digest, getSession, listDirectory, listPlayers, login, logout, register, RegistrationError } from './services/authService';
 import { isGameParticipant, listInvitations, listMatches, respondToInvitation, sendInvitation } from './services/invitationService';
 import { drainPushOutbox, enqueueTest, hasSubscription, pushConfigured, removeSubscription, saveSubscription, type PushEnvironment } from './services/pushService';
 import type { PushSubscriptionRequest } from '../../shared/src/index';
@@ -157,8 +158,10 @@ app.post('/api/push/test', async (c) => {
   if (!account || !token) return c.json({ error: 'Authentication required' }, 401);
   if (!pushConfigured(c.env || {})) return c.json({ error: 'Notifications are not configured yet' }, 503);
   if (!await hasSubscription(db, account.id, token)) return c.json({ error: 'Enable notifications on this device first' }, 409);
-  await enqueueTest(db, account.id, token);
-  return c.json({ queued: true }, 202);
+  const eventKey = await enqueueTest(db, account.id, token);
+  const report = await drainPushOutbox(db, c.env, undefined, Date.now(), { userId: account.id, sessionHash: await digest(token), eventKey });
+  const outcome: PushTestResponse['outcome'] = report.unsubscribed ? 'unsubscribed' : report.rejected ? 'rejected' : report.retrying ? 'retrying' : report.accepted ? 'accepted' : 'queued';
+  return c.json({ outcome } satisfies PushTestResponse, outcome === 'accepted' ? 200 : 202);
 });
 
 app.get('/api/players', async (c) => {

@@ -22,7 +22,7 @@ From the repository root:
 bun run server/scripts/create-push-keys.ts mailto:you@your-domain.com
 ```
 
-The generator creates gitignored `server/.dev.vars`, refuses to overwrite it, and never prints keys. Local keys were generated during implementation with the development-only subject `https://example.com`; replace that contact before production export. Keep the key pair stable. Rotation requires devices to subscribe again; the client detects a changed public key and offers re-enablement.
+The generator creates gitignored `server/.dev.vars`, refuses to overwrite it, and never prints keys. The configured contact is `https://trivia-clash.saadmankabir95.workers.dev`. Keep the key pair stable. Rotation requires devices to subscribe again; the client detects a changed public key and offers re-enablement.
 
 Start the Bun API with these keys:
 
@@ -32,7 +32,7 @@ bun --env-file=server/.dev.vars run dev:server
 
 For local Workers testing, run `bun run wrangler dev --test-scheduled` from `server`; Wrangler reads `.dev.vars` automatically. Apply the fresh baseline to disposable local D1 state first.
 
-## Production setup (not deployed)
+## Production setup
 
 1. Create a fresh D1 database and update `server/wrangler.toml`. The updated baseline includes push tables/triggers; an already-applied `0001` is not rerun on an existing database. Fresh setup is the supported deployment target.
 2. Set a real HTTPS contact URL or mailto address in `server/.dev.vars`. From `server`, export and upload secrets without placing their values in shell arguments:
@@ -61,7 +61,7 @@ bun run --cwd server typecheck:worker
 From `server`, check fresh disposable D1 and packaging:
 
 ```powershell
-bun run wrangler d1 migrations apply triviaclash-db-v2 --local --persist-to .local-push-verification
+bun run wrangler d1 migrations apply triviaclash-db-v3 --local --persist-to .local-push-verification
 bun run wrangler deploy --dry-run
 ```
 
@@ -77,3 +77,19 @@ Still required after deployment: installed iPhone/Android lock-screen receipt wi
 - [MDN: Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API)
 - [Web Crypto Web Push sender](https://github.com/block65/webcrypto-web-push)
 - [Cloudflare Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/)
+
+## Deployment — 2026-10-03
+
+Production uses the fresh `triviaclash-db-v3` database. The previous `triviaclash-db-v2` database is retained for rollback; profiles start fresh in this deployment. VAPID secrets are configured through Wrangler. Live URLs: https://trivia-clash.saadmankabir95.workers.dev and https://trivia-clash-server.saadmankabir95.workers.dev. Real-device notification checks listed above remain required.
+
+## Live push delivery fix
+
+The initial sender used `redirect: 'error'`. Bun accepted it, but Cloudflare Workers threw a TypeError before sending the request. The sender now uses `redirect: 'manual'` and treats redirects as rejected deliveries, so it never forwards VAPID credentials to a redirect destination. The fix was deployed; Apple returned HTTP 201 for the registered iPhone test. This verifies push-service acceptance, not that the phone displayed the notification.
+
+`POST /api/push/test` now attempts the session-owned test delivery and returns an `outcome`: `accepted`, `retrying`, `rejected`, `queued`, or `unsubscribed`. Client controls distinguish these outcomes and offer re-enablement for expired subscriptions. Tests use high urgency. Diagnostics log only fixed provider/stage/error categories and status codes, never endpoints, keys, exception messages, or session tokens.
+
+The regression suite includes an actual workerd/Miniflare test of Apple, Google, Mozilla, and Windows push transports with generated keys and mocked outbound services. It verifies encrypted POSTs and prevents redirects from forwarding credentials. Native Node must be available for this runtime regression; Bun runs the build and test harness. Push regressions, Worker typing, client/Bun builds, the deployment dry run, and fresh disposable D1 migrations passed during verification. Real-device display and notification-click checks remain required on supported platforms.
+
+## Crown icon refresh
+
+Install metadata, install guidance, and notification `icon` now reference fresh `*-crown-v1.png` URLs. The manifest link is versioned, the worker cache is v7, and the conventional root Apple touch-icon URL is provided. Artwork is unchanged; old files remain for old tabs. Existing iPhone installations may retain their captured artwork. Remove the old Home Screen app, reopen the live site in Safari, add it again after the crown appears in the installation preview, select the existing profile, and enable notifications again. iOS notification banners use installed app artwork and may ignore the per-notification `icon` option; browser/OS behavior controls that display. References: https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/ and https://bugs.webkit.org/show_bug.cgi?id=280162.
