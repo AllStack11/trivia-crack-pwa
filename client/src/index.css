@@ -119,7 +119,7 @@ body { background: #c5eee8; font-family: 'Trebuchet MS', 'Arial Rounded MT Bold'
 .trivia-app button:focus-visible, .trivia-app [role="button"]:focus-visible { outline: 3px solid #166dad; outline-offset: 3px; }
 .trivia-app [class*="shadow-"] { --tw-shadow-color: #386e7020; }
 .game-header { background: #fffdf5 !important; border-bottom: 3px solid #a4d9d4 !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; transform: translateZ(0); will-change: transform; }
-.game-header button { width: 44px; padding: 10px; border-radius: 16px; background: #edf7f4 !important; border: 1px solid #cde5df; box-shadow: 0 3px 0 #cde5df; }
+.game-header button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border-radius: 16px; background: #edf7f4 !important; border: 1px solid #cde5df; box-shadow: 0 3px 0 #cde5df; }
 .game-wordmark { color: #21687a; letter-spacing: -.5px; font-size: 18px; text-shadow: 0 2px white; }
 .game-dock { background: #fffdf5 !important; border-top: 3px solid #a4d9d4 !important; box-shadow: 0 -8px 30px #39757015; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; transform: translateZ(0); will-change: transform; }
 .game-dock button { min-height: 58px; }

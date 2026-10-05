@@ -64,14 +64,14 @@ export default function AppHeader({
               whileTap={{ scale: 0.9 }}
               onClick={() => {
                 playButtonPop();
-
+                triggerHaptic('light');
                 onBackToLobby();
               }}
-              className="p-2 -ml-1 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60 shadow flex items-center gap-1.5 text-xs font-semibold"
+              title="Back to Lobby"
+              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-slate-700/60 shadow-sm flex items-center justify-center flex-shrink-0"
               aria-label="Back to Lobby"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Back</span>
             </motion.button>
           ) : account ? (
             <div className="flex items-center gap-2 min-w-0">
@@ -136,11 +136,11 @@ export default function AppHeader({
               whileTap={{ scale: 0.9 }}
               onClick={() => {
                 playButtonPop();
-
+                triggerHaptic('light');
                 onShareApp();
               }}
               title="Share duel link"
-              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-slate-700/60 shadow-sm"
+              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-slate-700/60 shadow-sm flex items-center justify-center"
               aria-label="Share"
             >
               <Share2 className="w-4 h-4" />
@@ -158,7 +158,7 @@ export default function AppHeader({
                 onInstallApp();
               }}
               title="Install App"
-              className="hidden sm:flex p-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-900/30 border border-indigo-400/40 animate-pulse"
+              className="hidden sm:flex p-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-900/30 border border-indigo-400/40 animate-pulse items-center justify-center"
               aria-label="Install App"
             >
               <Download className="w-4 h-4" />
@@ -175,7 +175,7 @@ export default function AppHeader({
                 onToggleMute();
               }}
               title={muted ? 'Unmute Audio' : 'Mute Audio'}
-              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-slate-700/60 shadow-sm"
+              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-slate-700/60 shadow-sm flex items-center justify-center"
               aria-label={muted ? "Unmute sound" : "Mute sound"}
               aria-pressed={muted}
             >
@@ -198,7 +198,7 @@ export default function AppHeader({
                 onLogout();
               }}
               title="Switch Player / Log Out"
-              className="p-2 rounded-xl bg-slate-800/80 hover:bg-rose-900/50 text-slate-400 hover:text-rose-300 border border-slate-700/60 shadow-sm"
+              className="p-2 rounded-xl bg-slate-800/80 hover:bg-rose-900/50 text-slate-400 hover:text-rose-300 border border-slate-700/60 shadow-sm flex items-center justify-center"
               aria-label="Log Out"
             >
               <LogOut className="w-4 h-4" />
