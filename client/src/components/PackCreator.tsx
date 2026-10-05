@@ -453,7 +453,7 @@ export default function PackCreator({ onBack }: PackCreatorProps) {
       </div>
 
       {/* Main Studio View: Pack List vs Builder */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 overscroll-contain">
+      <div className="flex-1 overflow-y-auto scroll-touch px-4 py-4 overscroll-contain">
         {!isCreating ? (
           <div className="flex flex-col gap-4">
             {/* Top Action Buttons */}

@@ -61,12 +61,49 @@ body {
 .animate-spin-slow {
   animation: spinSlow 12s linear infinite;
 }
+
+/* Hardware-accelerated smooth mobile scrolling */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  will-change: scroll-position;
+  transform: translateZ(0);
+}
+
+/* GPU-composited mascot animations running entirely off the JS main thread */
+@keyframes mascotBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes mascotThinking {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50% { transform: translateY(-4px) rotate(3deg); }
+}
+@keyframes mascotCelebrate {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-12px) rotate(4deg); }
+}
+
+.mascot-anim-happy {
+  animation: mascotBob 3s ease-in-out infinite;
+  will-change: transform;
+}
+.mascot-anim-thinking {
+  animation: mascotThinking 3s ease-in-out infinite;
+  will-change: transform;
+}
+.mascot-anim-celebrating {
+  animation: mascotCelebrate 1.2s ease-in-out infinite;
+  will-change: transform;
+}
+
 /* Illustrated mobile game theme. Status and answer feedback retain their colors. */
 :root { color-scheme: light; }
 body { background: #c5eee8; font-family: 'Trebuchet MS', 'Arial Rounded MT Bold', system-ui, sans-serif; }
 .trivia-app { color: #24495a; }
-.game-world { position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: #c5eee8; }
-.game-world-art { position: absolute; inset: 0; background: url('/art/world.webp') center bottom / cover no-repeat; }
+.game-world { position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: #c5eee8; transform: translateZ(0); will-change: transform; contain: strict; }
+.game-world-art { position: absolute; inset: 0; background: url('/art/world.webp') center bottom / cover no-repeat; transform: translateZ(0); }
 .category-wash { position: absolute; inset: 0; opacity: .09; transition: background 1s; }
 .trivia-app [class*="bg-slate-9"], .trivia-app [class*="bg-slate-8"], .trivia-app [class*="bg-slate-7"] { background-color: #fffdf5; }
 .trivia-app [class*="border-slate-"] { border-color: #d1e1de; }
@@ -81,10 +118,10 @@ body { background: #c5eee8; font-family: 'Trebuchet MS', 'Arial Rounded MT Bold'
 .trivia-app button { min-height: 44px; touch-action: manipulation; }
 .trivia-app button:focus-visible, .trivia-app [role="button"]:focus-visible { outline: 3px solid #166dad; outline-offset: 3px; }
 .trivia-app [class*="shadow-"] { --tw-shadow-color: #386e7020; }
-.game-header { background: #fffdf5f2 !important; border-bottom: 3px solid #a4d9d4 !important; backdrop-filter: blur(12px); }
+.game-header { background: #fffdf5 !important; border-bottom: 3px solid #a4d9d4 !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; transform: translateZ(0); will-change: transform; }
 .game-header button { width: 44px; padding: 10px; border-radius: 16px; background: #edf7f4 !important; border: 1px solid #cde5df; box-shadow: 0 3px 0 #cde5df; }
 .game-wordmark { color: #21687a; letter-spacing: -.5px; font-size: 18px; text-shadow: 0 2px white; }
-.game-dock { background: #fffdf5f5 !important; border-top: 3px solid #a4d9d4 !important; box-shadow: 0 -8px 30px #39757015; }
+.game-dock { background: #fffdf5 !important; border-top: 3px solid #a4d9d4 !important; box-shadow: 0 -8px 30px #39757015; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; transform: translateZ(0); will-change: transform; }
 .game-dock button { min-height: 58px; }
 .game-dock button[aria-current="page"] { background: #d8f2e6; color: #127553; box-shadow: inset 0 -3px #a7d8c3; }
 .game-dock button[aria-current="page"] span, .game-dock button[aria-current="page"] svg { color: #127553; }
@@ -113,7 +150,18 @@ body { background: #c5eee8; font-family: 'Trebuchet MS', 'Arial Rounded MT Bold'
 .play-cta:active { transform: translateY(3px); box-shadow: 0 2px 0 #25883a; }
 @media (min-width: 700px) { .game-world-art { background-size: auto 100%; } }
 @media (max-width: 360px) { .game-wordmark { font-size: 14px; } .game-header { padding-inline: 10px; } .game-header button { width: 40px; min-height: 40px; } .category-confetti span { padding-inline: 5px; } }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  .mascot-anim-happy,
+  .mascot-anim-thinking,
+  .mascot-anim-celebrating {
+    animation: none !important;
+  }
+}
 
 .game-welcome { min-height: 350px; flex-shrink: 0; }
 .game-welcome p { max-width: none; position: relative; z-index: 2; }

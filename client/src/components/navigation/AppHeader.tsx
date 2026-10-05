@@ -54,7 +54,7 @@ export default function AppHeader({
   const isLobby = currentView === 'LOBBY';
 
   return (
-    <header className="game-header sticky top-0 z-40 w-full bg-slate-950/85 backdrop-blur-xl border-b border-slate-800/80 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] pb-2.5 px-4">
+    <header className="game-header sticky top-0 z-40 w-full bg-slate-950/95 border-b border-slate-800/80 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] pb-2.5 px-4">
       <div className="max-w-lg mx-auto flex items-center justify-between gap-2">
         {/* Left Side: Back button or User Avatar / Logo */}
         <div className="flex items-center gap-2.5 min-w-0">

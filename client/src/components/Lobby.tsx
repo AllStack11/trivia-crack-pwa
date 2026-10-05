@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { motion, AnimatePresence, type PanInfo } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Swords,
   Users,
@@ -397,22 +397,33 @@ export default function Lobby({
     );
   };
 
-  // Horizontal Swipe Gestures between tabs
-  const handleTabSwipe = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    const threshold = 60;
-    const velocityThreshold = 250;
-    const currentIdx = TABS.indexOf(activeTab);
+  // Horizontal Swipe Gestures between tabs with passive touch events (zero drag intervention on vertical scroll)
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
-    if (info.offset.x < -threshold || info.velocity.x < -velocityThreshold) {
-      // Swiped Left -> Next Tab
-      if (currentIdx < TABS.length - 1) {
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStartRef.current;
+    if (!start) return;
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    const dt = Date.now() - start.time;
+    touchStartRef.current = null;
+
+    // Trigger tab switch only on a quick, predominantly horizontal swipe
+    if (dt < 450 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.75) {
+      const currentIdx = TABS.indexOf(activeTab);
+      if (dx < 0 && currentIdx < TABS.length - 1) {
         playButtonPop();
         triggerHaptic('selection');
         setActiveTab(TABS[currentIdx + 1]);
-      }
-    } else if (info.offset.x > threshold || info.velocity.x > velocityThreshold) {
-      // Swiped Right -> Prev Tab
-      if (currentIdx > 0) {
+      } else if (dx > 0 && currentIdx > 0) {
         playButtonPop();
         triggerHaptic('selection');
         setActiveTab(TABS[currentIdx - 1]);
@@ -446,7 +457,7 @@ export default function Lobby({
       {/* Main Content Area */}
       {!account ? (
         /* ================= UNAUTHENTICATED HERO SELECTOR ================= */
-        <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-6 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)]">
+        <div className="flex-1 overflow-y-auto scroll-touch px-4 py-6 flex flex-col gap-6 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)]">
           <GameWelcome />
           <div className="text-center"><h2 className="text-xl font-black">Who's playing?</h2><p className="text-sm text-slate-500">Pick your profile and let the fun begin.</p></div>
           {/* Player Grid */}
@@ -457,16 +468,14 @@ export default function Lobby({
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3.5">
-            <motion.button
+            <button
               type="button"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.96 }}
               onClick={() => {
                 playButtonPop();
                 triggerHaptic('selection');
                 setShowNewPlayerSheet(true);
               }}
-              className="flex flex-col items-center justify-center p-5 rounded-3xl bg-slate-900/70 hover:bg-slate-800/80 border-2 border-dashed border-indigo-500/40 hover:border-indigo-400 transition-all shadow-xl group text-center cursor-pointer min-h-[140px]"
+              className="flex flex-col items-center justify-center p-5 rounded-3xl bg-slate-900/70 hover:bg-slate-800/80 border-2 border-dashed border-indigo-500/40 hover:border-indigo-400 active:scale-[0.98] transition-transform duration-100 shadow-xl group text-center cursor-pointer min-h-[140px] touch-manipulation"
             >
               <div className="w-14 h-14 rounded-2xl bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center text-indigo-300 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-md mb-2.5">
                 <Plus className="w-7 h-7 stroke-[2.5]" />
@@ -475,18 +484,16 @@ export default function Lobby({
                 New Player
               </span>
               <span className="text-[10px] text-slate-500 mt-0.5">Create Profile</span>
-            </motion.button>
+            </button>
 
             {/* Existing Players */}
             {directory.map((player) => (
-              <motion.button
+              <button
                 key={player.id}
                 type="button"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.96 }}
                 onClick={() => handleSelectPlayer(player)}
                 disabled={loadingAction !== null}
-                className="relative flex flex-col items-center justify-center p-5 rounded-3xl bg-slate-900/85 hover:bg-slate-800/90 border border-slate-700/80 hover:border-amber-400/60 transition-all shadow-xl group text-center cursor-pointer disabled:opacity-50 min-h-[140px]"
+                className="relative flex flex-col items-center justify-center p-5 rounded-3xl bg-slate-900/85 hover:bg-slate-800/90 border border-slate-700/80 hover:border-amber-400/60 active:scale-[0.98] transition-transform duration-100 shadow-xl group text-center cursor-pointer disabled:opacity-50 min-h-[140px] touch-manipulation"
               >
                 {player.hasPin && (
                   <div
@@ -502,7 +509,7 @@ export default function Lobby({
                     player.username
                   )} flex items-center justify-center text-xl font-black text-white shadow-lg ring-2 ring-slate-800 group-hover:scale-105 transition-transform mb-2.5`}
                 >
-                  <CategoryCharacter category="GEOGRAPHY" size="md" mood="happy" />
+                  <CategoryCharacter category="GEOGRAPHY" size="md" mood="idle" />
                 </div>
 
                 <span className="text-xs font-extrabold text-white group-hover:text-amber-300 transition-colors truncate max-w-full px-1">
@@ -518,7 +525,7 @@ export default function Lobby({
                     '1-Tap Play'
                   )}
                 </span>
-              </motion.button>
+              </button>
             ))}
             </div>
           )}
@@ -535,12 +542,10 @@ export default function Lobby({
         /* ================= AUTHENTICATED MOBILE DASHBOARD ================= */
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Swipeable Tab Container */}
-          <motion.div
-            className="flex-1 overflow-y-auto px-4 py-3 pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] overscroll-contain touch-pan-y"
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.12}
-            onDragEnd={handleTabSwipe}
+          <div
+            className="flex-1 overflow-y-auto scroll-touch px-4 py-3 pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] overscroll-contain"
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
           >
             {/* TAB 1: DUELS */}
             {activeTab === 'matches' && (
@@ -593,21 +598,19 @@ export default function Lobby({
                       const isCompleted = match.status === 'COMPLETED';
 
                       return (
-                        <motion.div
+                        <div
                           key={match.gameId}
                           role="button"
                           tabIndex={0}
                           aria-label={`Open match against ${match.opponent.username}`}
                           onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenGame(match.gameId); } }}
-                          whileHover={{ scale: 1.01 }}
-                          whileTap={{ scale: 0.98 }}
                           onClick={() => {
                             playButtonPop();
                             triggerHaptic(isMyTurn ? 'heavy' : 'light');
                             onOpenGame(match.gameId);
                           }}
                           className={`
-                            match-card relative overflow-hidden rounded-3xl p-4 border cursor-pointer transition-all shadow-xl
+                            match-card relative overflow-hidden rounded-3xl p-4 border cursor-pointer active:scale-[0.98] transition-transform duration-100 shadow-md touch-manipulation
                             ${
                               isMyTurn
                                 ? 'bg-gradient-to-r from-indigo-950/90 via-slate-900/95 to-slate-900/95 border-amber-400/80 shadow-indigo-950/40 ring-1 ring-amber-400/30'
@@ -673,7 +676,7 @@ export default function Lobby({
                               )}
                             </div>
                           </div>
-                        </motion.div>
+                        </div>
                       );
                     })}
                   </div>
@@ -752,7 +755,7 @@ export default function Lobby({
                               player.username
                             )} flex items-center justify-center font-bold text-white text-xs shadow-md ring-1 ring-slate-700 flex-shrink-0`}
                           >
-                            <CategoryCharacter category="GEOGRAPHY" size="md" mood="happy" />
+                            <CategoryCharacter category="GEOGRAPHY" size="sm" mood="idle" />
                           </div>
                           <span className="text-xs font-bold text-white truncate">
                             {player.username}
@@ -886,7 +889,7 @@ export default function Lobby({
                 </button>
               </div>
             )}
-          </motion.div>
+          </div>
 
           {/* Persistent Bottom Navigation Dock */}
           <BottomNav

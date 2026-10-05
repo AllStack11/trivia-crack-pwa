@@ -37,15 +37,15 @@ export default function CharacterShowcase({
   };
 
   return (
-    <div className={`w-full rounded-3xl bg-slate-900/80 border border-slate-800/80 backdrop-blur-xl p-4 sm:p-5 shadow-2xl overflow-hidden relative ${className}`}>
-      {/* Background radial glow matching selected category */}
+    <div className={`w-full rounded-3xl bg-slate-900/90 border border-slate-800/80 p-4 sm:p-5 shadow-xl overflow-hidden relative ${className}`}>
+      {/* Background radial glow matching selected category without costly blur filters */}
       <div
-        className="absolute -top-24 -right-24 w-64 h-64 rounded-full blur-3xl opacity-30 transition-all duration-700 pointer-events-none"
-        style={{ backgroundColor: profile.color }}
+        className="absolute -top-24 -right-24 w-64 h-64 rounded-full transition-all duration-700 pointer-events-none"
+        style={{ background: `radial-gradient(circle, ${profile.color}45 0%, transparent 70%)` }}
       />
       <div
-        className="absolute -bottom-24 -left-24 w-64 h-64 rounded-full blur-3xl opacity-20 transition-all duration-700 pointer-events-none"
-        style={{ backgroundColor: profile.accentColor }}
+        className="absolute -bottom-24 -left-24 w-64 h-64 rounded-full transition-all duration-700 pointer-events-none"
+        style={{ background: `radial-gradient(circle, ${profile.accentColor}35 0%, transparent 70%)` }}
       />
 
       {/* Header Title */}
