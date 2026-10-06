@@ -885,15 +885,26 @@ export default function Lobby({
                           </span>
                         </div>
 
-                        <button
-                          type="button"
-                          disabled={loadingAction !== null}
-                          onClick={() => void sendInvitation(player.id)}
-                          className="py-2 px-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-900/30 active:scale-95 transition-all flex items-center gap-1.5 flex-shrink-0"
-                        >
-                          <Swords className="w-3.5 h-3.5" />
-                          <span>Challenge</span>
-                        </button>
+                        {matches.some((m) => m.opponent.id === player.id && m.status !== 'COMPLETED') ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="py-2 px-3.5 rounded-2xl bg-slate-800 text-slate-400 font-bold text-xs cursor-not-allowed flex items-center gap-1.5 flex-shrink-0"
+                          >
+                            <Swords className="w-3.5 h-3.5" />
+                            <span>Duel in progress</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={loadingAction !== null}
+                            onClick={() => void sendInvitation(player.id)}
+                            className="py-2 px-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-900/30 active:scale-95 transition-all flex items-center gap-1.5 flex-shrink-0"
+                          >
+                            <Swords className="w-3.5 h-3.5" />
+                            <span>Challenge</span>
+                          </button>
+                        )}
                       </div>
                     ))
                   )}

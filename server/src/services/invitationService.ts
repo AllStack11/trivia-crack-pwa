@@ -44,6 +44,12 @@ export async function sendInvitation(db: AppDatabase, senderId: string, recipien
     [senderId, recipientId]
   );
   if (pending) throw new Error('You already have a pending invitation for this player');
+  const activeGame = await db.queryFirst<{ id: string }>(
+    `SELECT id FROM games WHERE status != 'COMPLETED'
+     AND ((player1_id = ? AND player2_id = ?) OR (player1_id = ? AND player2_id = ?))`,
+    [senderId, recipientId, recipientId, senderId]
+  );
+  if (activeGame) throw new Error('You already have an active game with this player');
   const cleanPacks = Array.isArray(packIds) && packIds.length ? [...new Set(packIds.filter((id) => typeof id === 'string' && id.length <= 128))] : ['default'];
   try {
     await db.execute(
