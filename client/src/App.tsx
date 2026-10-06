@@ -6,6 +6,9 @@ import type {
   WheelSlice,
 } from '../../shared/src/index';
 import { CATEGORIES, SPIN_RESULT_HOLD_MS } from '../../shared/src/index';
+
+/** How long the answered question and its result stay on screen. */
+const RESULT_REVIEW_MS = 7500;
 import CrownBar from './components/CrownBar';
 import CrownModal from './components/CrownModal';
 import Lobby from './components/Lobby';
@@ -333,7 +336,7 @@ function AppContent() {
     clearTimeout(resultReviewTimerRef.current);
     resultReviewTimerRef.current = window.setTimeout(() => {
       setActiveReviewResult(null);
-    }, 3000);
+    }, RESULT_REVIEW_MS);
   }, [gameState?.lastResult, gameState?.mode]);
   useEffect(() => {
     return () => {
@@ -441,7 +444,7 @@ function AppContent() {
       clearTimeout(resultReviewTimerRef.current);
       resultReviewTimerRef.current = window.setTimeout(() => {
         setActiveReviewResult(null);
-      }, 3000);
+      }, RESULT_REVIEW_MS);
       return true;
     }
     return false;
