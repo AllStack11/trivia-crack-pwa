@@ -384,10 +384,10 @@ export default function QuestionView({
                 initial={{ opacity: 0, scale: 0.9, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className={`mt-4 p-4 rounded-3xl border text-center shadow-2xl backdrop-blur-xl relative overflow-hidden ${
+                className={`mt-4 p-4 rounded-3xl border text-center shadow-xl backdrop-blur-xl relative overflow-hidden ${
                   lastResult.wasCorrect
-                    ? 'bg-emerald-950/95 border-emerald-400/80 shadow-emerald-500/20 text-emerald-100'
-                    : 'bg-rose-950/95 border-rose-400/80 shadow-rose-500/20 text-rose-100'
+                    ? 'result-banner result-banner-correct bg-emerald-50 border-emerald-300 text-emerald-950'
+                    : 'result-banner result-banner-incorrect bg-rose-50 border-rose-300 text-rose-950'
                 }`}
               >
                 {/* Host Reaction Quote */}
@@ -397,26 +397,34 @@ export default function QuestionView({
                     size="sm"
                     mood={lastResult.wasCorrect ? 'celebrating' : 'defeated'}
                   />
-                  <div className="text-xs font-black">
+                  <div
+                    className={`result-quote text-xs font-black ${
+                      lastResult.wasCorrect ? 'text-emerald-800' : 'text-rose-900'
+                    }`}
+                  >
                     {lastResult.wasCorrect
                       ? `"${characterProfile.quotes.correct}"`
                       : `"${characterProfile.quotes.incorrect}"`}
                   </div>
                 </div>
 
-                <div className="font-extrabold text-sm sm:text-base">
+                <div
+                  className={`result-title font-black text-sm sm:text-base tracking-wide ${
+                    lastResult.wasCorrect ? 'text-emerald-700' : 'text-rose-700'
+                  }`}
+                >
                   {lastResult.wasCorrect ? 'CORRECT ANSWER!' : 'INCORRECT!'}
                 </div>
 
                 {lastResult.awardedCrown && (
-                  <div className="text-xs font-black text-amber-300 mt-1 flex items-center justify-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5" />
+                  <div className="text-xs font-black text-amber-700 mt-1 flex items-center justify-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                     <span>CROWN CLAIMED! You conquered {categoryInfo.name}!</span>
                   </div>
                 )}
                 {lastResult.stolenCrown && (
-                  <div className="text-xs font-black text-amber-300 mt-1 flex items-center justify-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5" />
+                  <div className="text-xs font-black text-amber-700 mt-1 flex items-center justify-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                     <span>CROWN STOLEN FROM OPPONENT!</span>
                   </div>
                 )}
@@ -428,7 +436,11 @@ export default function QuestionView({
                       playButtonPop();
                       onDismissResult();
                     }}
-                    className="mt-3 py-2 px-5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs transition-colors"
+                    className={`result-continue-btn mt-3 py-2 px-6 rounded-xl font-black text-xs transition-all shadow-md active:scale-95 text-white ${
+                      lastResult.wasCorrect
+                        ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'
+                        : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30'
+                    }`}
                   >
                     Continue &rarr;
                   </button>

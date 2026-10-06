@@ -57,11 +57,18 @@ describe('QuestionView Component Rendering & Contract Tests', () => {
         isMyTurn={true}
         onAnswer={() => {}}
         lastResult={mockResult}
+        onDismissResult={() => {}}
       />
     );
 
     // Result banner must be present
     expect(html).toContain('CORRECT ANSWER!');
+    expect(html).toContain('result-banner-correct');
+    expect(html).toContain('result-quote');
+    expect(html).toContain('result-title');
+    expect(html).toContain('text-emerald-800');
+    expect(html).toContain('text-emerald-700');
+    expect(html).toContain('result-continue-btn');
     // Options must be disabled when lastResult is shown
     expect(html).toContain('disabled=""');
   });
@@ -82,9 +89,16 @@ describe('QuestionView Component Rendering & Contract Tests', () => {
         isMyTurn={false}
         onAnswer={() => {}}
         lastResult={mockResult}
+        onDismissResult={() => {}}
       />
     );
 
     expect(html).toContain('INCORRECT!');
+    expect(html).toContain('result-banner-incorrect');
+    expect(html).toContain('result-quote');
+    expect(html).toContain('result-title');
+    expect(html).toContain('text-rose-900');
+    expect(html).toContain('text-rose-700');
+    expect(html).toContain('result-continue-btn');
   });
 });

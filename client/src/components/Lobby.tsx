@@ -30,7 +30,6 @@ import type {
 import { playButtonPop, triggerHaptic } from '../utils/audio';
 import { apiUrl } from '../utils/api';
 import { setAppBadge } from '../hooks/usePWA';
-import { detectAcceptedMatches } from '../utils/matchAccepted';
 import { useToast } from './ui/Toast';
 import BottomSheet from './ui/BottomSheet';
 import Keypad from './ui/Keypad';
@@ -138,7 +137,6 @@ export default function Lobby({
     }
   };
   const [matches, setMatches] = useState<Match[]>([]);
-  const [acceptedMatch, setAcceptedMatch] = useState<Match | null>(null);
   const [directory, setDirectory] = useState<DirectoryPlayer[]>([]);
   const [directoryLoading, setDirectoryLoading] = useState(false);
 
@@ -199,12 +197,7 @@ export default function Lobby({
         setPlayers(playerData.players);
         setInvitations(inviteData.invitations);
         setMatches(matchData.matches);
-        const accepted = detectAcceptedMatches(account.id, matchData.matches);
-        if (accepted.length) {
-          setAcceptedMatch(accepted[0]);
-          playButtonPop();
-          triggerHaptic('success');
-        }
+
       } catch (error) {
         if (current() && !controller.signal.aborted) showToast(error instanceof Error ? error.message : 'Could not refresh matches', 'error');
       } finally {
@@ -1078,41 +1071,6 @@ export default function Lobby({
             />
           </div>
         )}
-      </BottomSheet>
-
-      {/* ================= MATCH ACCEPTED MODAL ================= */}
-      <BottomSheet
-        isOpen={acceptedMatch !== null}
-        onClose={() => setAcceptedMatch(null)}
-        title="Challenge accepted!"
-        subtitle={acceptedMatch ? `${acceptedMatch.opponent.username} accepted your invitation` : undefined}
-        icon={<Swords className="w-5 h-5 text-amber-400" />}
-      >
-        <div className="flex flex-col gap-3 py-2">
-          <p className="text-sm text-slate-300 text-center">Your match is ready. You play first!</p>
-          <button
-            type="button"
-            onClick={() => {
-              const gameId = acceptedMatch?.gameId;
-              playButtonPop();
-              setAcceptedMatch(null);
-              if (gameId) onOpenGame(gameId);
-            }}
-            className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 text-white font-bold text-sm shadow-xl shadow-indigo-950/50 active:scale-98 transition-all"
-          >
-            Play now
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              playButtonPop();
-              setAcceptedMatch(null);
-            }}
-            className="w-full py-2.5 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
-          >
-            Later
-          </button>
-        </div>
       </BottomSheet>
 
       {/* ================= CREATE PLAYER BOTTOM SHEET ================= */}

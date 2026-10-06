@@ -12,6 +12,7 @@ const RESULT_REVIEW_MS = 7500;
 import CrownBar from './components/CrownBar';
 import CrownModal from './components/CrownModal';
 import Lobby from './components/Lobby';
+import TurnNotification from './components/TurnNotification';
 import PackCreator from './components/PackCreator';
 import QuestionView from './components/QuestionView';
 import Wheel from './components/Wheel';
@@ -517,6 +518,10 @@ function AppContent() {
     <div className="trivia-app h-[100dvh] max-h-[100dvh] w-full text-slate-100 flex flex-col justify-between overflow-hidden relative select-none">
       {/* Dynamic Cosmic Animated Background with Reactive Category Lighting */}
       <AnimatedBackground activeCategory={activeCategory} />
+
+      {account && !authLoading && view !== 'GAME' && (
+        <TurnNotification key={account.token} account={account} onOpenGame={handleOpenGame} onUnauthorized={handleUnauthorized} />
+      )}
 
       {/* Top App Header */}
       <AppHeader

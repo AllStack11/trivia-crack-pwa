@@ -38,6 +38,7 @@ A mobile-first Progressive Web App (PWA) clone of Trivia Crack built for friends
 - **Synthesized Audio Engine**:
   - Pure Web Audio API oscillators for wheel ticks, button pops, correct chimes, incorrect buzzers, and victory fanfare. Zero external MP3 downloads required.
 - **Account-Based Matchmaking**: Username-only profiles with optional PIN protection, player discovery, accepted invitations, persistent match lists, and account-owned turn-based games.
+- **In-App Turn Reminders**: Outside a game, a modal lists matches where it is your turn, with buttons to play or dismiss for later. Visible, online pages check every 10 seconds and when returning to the app. Dismissed reminders return after an observed turn change or after leaving a game.
 
 ---
 
