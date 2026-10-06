@@ -110,6 +110,8 @@ self.addEventListener('push', event => {
     try { payload = event.data?.json() || {}; } catch { /* Always display a visible fallback. */ }
     const owner = await ownerStore(false).catch(() => null);
     const belongs = owner && payload?.accountId === owner;
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true }).catch(() => []);
+    if (belongs && windows.some(client => client.visibilityState === 'visible')) return;
     const count = belongs && Number.isSafeInteger(payload.badgeCount) ? Math.max(0, payload.badgeCount) : 0;
     await self.registration.showNotification(belongs && typeof payload.title === 'string' ? payload.title : 'Trivia Clash', {
       body: belongs && typeof payload.body === 'string' ? payload.body : 'Open the app to check your matches.',

@@ -39,6 +39,7 @@ import { usePWA, setAppBadge } from './hooks/usePWA';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { useAppUpdate } from './hooks/useAppUpdate';
 import { detachPush, serializePush } from './utils/push';
+import { resetMatchAcceptedTracking } from './utils/matchAccepted';
 
 type AppView = 'LOBBY' | 'PACK_CREATOR' | 'GAME';
 
@@ -205,6 +206,7 @@ function AppContent() {
     stopAllAudio();
     await serializePush(() => detachPush(account?.token)).catch(() => {});
     void setAppBadge(0);
+    resetMatchAcceptedTracking();
     if (account) {
       try {
         await fetch(apiUrl('/api/auth/logout'), {
@@ -226,6 +228,7 @@ function AppContent() {
   const handleUnauthorized = useCallback(() => {
     void serializePush(() => detachPush()).catch(() => {});
     void setAppBadge(0);
+    resetMatchAcceptedTracking();
     setAccount(null);
     setActiveGameId(null);
     setView('LOBBY');
