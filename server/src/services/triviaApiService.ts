@@ -483,7 +483,7 @@ export async function persistQuestionsToDb(
   let inserted = 0;
   for (const q of questions) {
     try {
-      await db.execute(
+      const result = await db.execute(
         `INSERT OR IGNORE INTO questions (id, pack_id, category, question, image_url, correct_answer, incorrect_answers_json, difficulty)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -497,7 +497,7 @@ export async function persistQuestionsToDb(
           q.difficulty
         ]
       );
-      inserted++;
+      inserted += result.rowsAffected;
     } catch {
       // Silently ignore insert conflict
     }
@@ -561,12 +561,13 @@ export async function expandPackQuestions(
     );
 
     if (toInsert.length > 0) {
-      await persistQuestionsToDb(db, toInsert);
+      // Provider IDs are shared across packs; each stored pack copy needs its own ID.
+      const inserted = await persistQuestionsToDb(db, toInsert.map(q => ({ ...q, id: `${packId}:${q.id}` })));
       for (const q of toInsert) {
         existingTexts.add(normalizeQuestionText(q.question));
       }
-      byCategory[cat] = toInsert.length;
-      totalAdded += toInsert.length;
+      byCategory[cat] = inserted;
+      totalAdded += inserted;
     }
   }
 

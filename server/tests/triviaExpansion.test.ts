@@ -17,12 +17,14 @@ import {
   type TriviaProviderName
 } from '../src/services/triviaApiService';
 import app from '../src/index';
+import { memoryCache } from '../src/services/questionCache';
 
 describe('Trivia API Expansion & Graceful Fallbacks', () => {
   let db: AppDatabase;
   const request = (path: string, init?: RequestInit) => app.request(path, init, { DB: asD1(db) });
 
   beforeEach(async () => {
+    memoryCache.clear();
     db = await createBunDatabase(':memory:');
     await db.exec(SCHEMA_SQL);
   });
@@ -76,6 +78,10 @@ describe('Trivia API Expansion & Graceful Fallbacks', () => {
     await ensureDefaultPackSeeded(db);
     const initialPack = await getPack(db, 'default');
     expect(initialPack?.questions.length).toBe(180);
+
+    // A deterministic novel provider result; a seeded bank cannot expand from
+    // the same exhausted curated fallback when the network is unavailable.
+    memoryCache.put('ART', [{ id: 'novel-art', packId: 'default', category: 'ART', question: 'Novel expansion fixture?', correctAnswer: 'Yes', incorrectAnswers: ['No', 'Maybe', 'Never'], difficulty: 'easy' }], 'fixture');
 
     // Expand pack with 1 question per category across ART and SCIENCE
     const expandResult = await expandPackQuestions(db, 'default', 1, ['ART', 'SCIENCE']);

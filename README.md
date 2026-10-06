@@ -103,7 +103,7 @@ cd client && bun run deploy
 
 The migration baseline targets a fresh database; it does not upgrade older deployments. Verify migrations with disposable local D1 state, never the production database.
 
-Game actions use monotonic revisions and commit answer claims, scores, crowns and game state atomically. Question deadlines are persisted by the server: ordinary questions include the 6.4-second wheel animation and 0.9-second landing display before their 20-second timer; crown questions start immediately. The server allows 2 seconds for delivery and resolves expired questions on match reads/SSE, even if the player disconnects. Reloading preserves the deadline. If all question sources are exhausted, content can repeat with a new answerable occurrence ID.
+Game actions use monotonic revisions and commit answer claims, scores, crowns and game state atomically. Question deadlines are persisted by the server: ordinary questions include the 6.4-second wheel animation and 0.9-second landing display before their 20-second timer; crown questions start immediately. The server allows 2 seconds for delivery and resolves expired questions on authenticated REST match reads, even if the player disconnects. SSE requests a fresh REST read when a deadline expires. Reloading preserves the deadline. If all question sources are exhausted, content can repeat with a new answerable occurrence ID.
 
 Session tokens remain in the client account storage and bearer headers. SSE does not accept query-string session tokens. Request logs omit query strings and headers. Client synchronization ignores older revisions and responses from previous matches or sessions; failed answer requests unlock the options for retry.
 
@@ -128,3 +128,13 @@ Opt-in Web Push alerts cover incoming invitations, accepted invitations, your tu
 The service worker uses fresh network navigation, caches hashed app assets, and opens cached deep links when offline. Multiplayer still requires connectivity. A lobby update prompt activates new versions without interrupting a question. Returning to the app refreshes dashboard and match state. Game actions have an eight-second network timeout so failed answers can be retried; server revisions and deadlines remain authoritative. Text zoom is enabled.
 
 See [notification setup and verification](docs/mobile-pwa-plan.md) before deploying. Configure VAPID secrets and use a fresh database containing the updated baseline; existing initialized databases are not upgraded by changing the baseline file. Real installed iPhone/Android lock-screen delivery must be checked after deployment.
+
+### Foreground synchronization and Cloudflare usage
+
+Match streams and dashboard reads pause when the page is hidden or offline. Returning fetches current persisted state before reopening one stream. Submitted gameplay actions continue independently of visibility; failed answers remain retryable. A visible desktop tab keeps synchronizing even when you are away from the keyboard.
+
+Each SSE invocation counts database statements, including batches, against a 45-query ceiling and reserves a complete coherent snapshot before doing more work. Streams rotate after at most 20 seconds, or sooner when query headroom runs low. A normal `reconnect` event uses the next stream's initial snapshot; an expired question or snapshot conflict requests a REST refresh. Push outbox draining runs after mutations and through the minute cron, rather than after SSE/GET reads.
+
+Backgrounding does not extend question deadlines. If everyone is hidden, timeout resolution and its turn notification wait for the next authenticated match read. Notifications remain opt-in and do not require a background SSE connection.
+
+The one-second polling baseline is visible player-seconds: eight players visible for one hour each contribute 28,800 poll reads, versus 691,200 for 24 hours. Authentication, rotating snapshots, answer-history scans, dashboard reads, actions, and push delivery add overhead. The 20-second lifetime is a conservative provisional ceiling; local workerd cannot establish production billed CPU headroom under the Free 10 ms limit. See [verification results and remaining device/runtime checks](docs/foreground-gameplay-sync-verification.md). No Free-tier capacity guarantee follows from the baseline alone.

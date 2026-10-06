@@ -334,3 +334,5 @@ export interface PushNotificationPayload {
 export interface PushTestResponse {
   outcome: 'accepted' | 'retrying' | 'rejected' | 'queued' | 'unsubscribed';
 }
+/** SSE control: normal rotation needs no REST read; expired/conflicting state does. */
+export interface GameReconnectEvent { refresh: boolean }

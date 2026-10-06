@@ -161,6 +161,7 @@ export default function Lobby({
   const activeToken = useRef(account?.token);
   activeToken.current = account?.token;
   const dashboardGeneration = useRef(0);
+  const dashboardRequest = useRef<{ controller: AbortController; promise: Promise<void> } | null>(null);
 
   const authFetch = useCallback(
     async (path: string, init: RequestInit = {}) => {
@@ -177,25 +178,33 @@ export default function Lobby({
   );
 
   const refreshDashboard = useCallback(async () => {
-    if (!account || !navigator.onLine) return;
-    const generation = ++dashboardGeneration.current;
-    const current = () => activeToken.current === account.token && dashboardGeneration.current === generation;
-    setIsRefreshing(true);
-    try {
-      const [playerData, inviteData, matchData] = await Promise.all([
-        authFetch('/api/players').then((res) => readResponse<{ players: Player[] }>(res)),
-        authFetch('/api/invitations').then((res) => readResponse<{ invitations: Invitation[] }>(res)),
-        authFetch('/api/games').then((res) => readResponse<GameListResponse>(res)),
-      ]);
-      if (!current()) return;
-      setPlayers(playerData.players);
-      setInvitations(inviteData.invitations);
-      setMatches(matchData.matches);
-    } catch (error) {
-      if (current()) showToast(error instanceof Error ? error.message : 'Could not refresh matches', 'error');
-    } finally {
-      if (current()) setIsRefreshing(false);
-    }
+    if (!account || !navigator.onLine || document.visibilityState !== 'visible') return;
+    if (dashboardRequest.current) return dashboardRequest.current.promise;
+    const controller = new AbortController();
+    const request = { controller, promise: Promise.resolve() };
+    dashboardRequest.current = request;
+    request.promise = (async () => {
+      const generation = ++dashboardGeneration.current;
+      const current = () => activeToken.current === account.token && dashboardGeneration.current === generation;
+      setIsRefreshing(true);
+      try {
+        const [playerData, inviteData, matchData] = await Promise.all([
+          authFetch('/api/players', { signal: controller.signal }).then((res) => readResponse<{ players: Player[] }>(res)),
+          authFetch('/api/invitations', { signal: controller.signal }).then((res) => readResponse<{ invitations: Invitation[] }>(res)),
+          authFetch('/api/games', { signal: controller.signal }).then((res) => readResponse<GameListResponse>(res)),
+        ]);
+        if (!current()) return;
+        setPlayers(playerData.players);
+        setInvitations(inviteData.invitations);
+        setMatches(matchData.matches);
+      } catch (error) {
+        if (current() && !controller.signal.aborted) showToast(error instanceof Error ? error.message : 'Could not refresh matches', 'error');
+      } finally {
+        if (current()) setIsRefreshing(false);
+        if (dashboardRequest.current === request) dashboardRequest.current = null;
+      }
+    })();
+    return request.promise;
   }, [account, authFetch, showToast]);
 
   useEffect(() => {
@@ -214,11 +223,37 @@ export default function Lobby({
   // Periodic match polling
   useEffect(() => {
     if (!account) return;
-    const resume = () => { if (document.visibilityState === 'visible') void refreshDashboard(); };
-    const interval = window.setInterval(resume, 10_000);
+    let interval: number | undefined;
+    const pause = () => {
+      window.clearInterval(interval);
+      interval = undefined;
+      dashboardGeneration.current++;
+      dashboardRequest.current?.controller.abort();
+      dashboardRequest.current = null;
+      setIsRefreshing(false);
+    };
+    const resume = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        if (interval === undefined) interval = window.setInterval(resume, 10_000);
+        void refreshDashboard();
+      }
+      else pause();
+    };
+    resume();
     window.addEventListener('online', resume);
+    window.addEventListener('offline', resume);
+    window.addEventListener('pageshow', resume);
+    window.addEventListener('pagehide', pause);
     document.addEventListener('visibilitychange', resume);
-    return () => { window.clearInterval(interval); window.removeEventListener('online', resume); document.removeEventListener('visibilitychange', resume); dashboardGeneration.current++; };
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('online', resume);
+      window.removeEventListener('offline', resume);
+      window.removeEventListener('pageshow', resume);
+      window.removeEventListener('pagehide', pause);
+      document.removeEventListener('visibilitychange', resume);
+      pause();
+    };
   }, [account, refreshDashboard]);
 
   // App Badge synchronization

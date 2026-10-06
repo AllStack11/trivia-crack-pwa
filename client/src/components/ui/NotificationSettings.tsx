@@ -1,11 +1,10 @@
 import { Bell } from 'lucide-react';
 import type { usePushNotifications } from '../../hooks/usePushNotifications';
-import { useToast } from './Toast';
 
 export default function NotificationSettings({ push, onInstallGuide }: {
   push: ReturnType<typeof usePushNotifications>; onInstallGuide: () => void;
 }) {
-  const { showToast } = useToast();
+  if (push.state === 'enabled') return null;
   const copy = {
     checking: 'Checking notifications…',
     unsupported: 'Notifications are unavailable in this browser. Try an installed app in a supported browser.',
@@ -21,10 +20,6 @@ export default function NotificationSettings({ push, onInstallGuide }: {
     {push.error && <p className="text-xs text-red-600 mt-2" role="alert">{push.error}</p>}
     <div className="flex flex-wrap gap-2 mt-3">
       {push.state === 'disabled' && <button type="button" disabled={push.busy} onClick={() => void push.enable()} className="rounded-xl bg-indigo-600 text-white px-3 text-sm font-bold">Enable notifications</button>}
-      {push.state === 'enabled' && <>
-        <button type="button" disabled={push.busy} onClick={() => void push.test().then(sent => { if (sent) showToast(sent === 'accepted' ? 'Test accepted by your notification service. Check your device notifications.' : 'Test is waiting for delivery. Please wait before trying again.', 'info'); })} className="rounded-xl bg-indigo-600 text-white px-3 text-sm font-bold">Send test</button>
-        <button type="button" disabled={push.busy} onClick={() => void push.disable()} className="rounded-xl border border-slate-600 px-3 text-sm">Turn off</button>
-      </>}
       {push.state === 'install-required' && <button type="button" onClick={onInstallGuide} className="rounded-xl border border-slate-600 px-3 text-sm">Installation guide</button>}
       {(push.state === 'unavailable' || push.state === 'denied') && <button type="button" disabled={push.busy} onClick={() => void push.retry()} className="rounded-xl border border-slate-600 px-3 text-sm">Check again</button>}
       {push.busy && <span className="text-xs self-center" role="status">Updating…</span>}

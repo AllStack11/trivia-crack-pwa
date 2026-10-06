@@ -42,6 +42,27 @@ import { detachPush, serializePush } from './utils/push';
 
 type AppView = 'LOBBY' | 'PACK_CREATOR' | 'GAME';
 
+// Spins already animated on this device; persisted so returning to a match doesn't replay them.
+const SEEN_SPINS_KEY = 'trivia-seen-spins';
+const SEEN_SPINS_MAX = 200;
+const seenSpins: string[] = (() => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SEEN_SPINS_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+})();
+const hasSeenSpin = (id: string) => seenSpins.includes(id);
+const markSpinSeen = (id: string) => {
+  if (seenSpins.includes(id)) return;
+  seenSpins.push(id);
+  if (seenSpins.length > SEEN_SPINS_MAX) seenSpins.splice(0, seenSpins.length - SEEN_SPINS_MAX);
+  try {
+    localStorage.setItem(SEEN_SPINS_KEY, JSON.stringify(seenSpins));
+  } catch { /* storage unavailable */ }
+};
+
 function AppContent() {
   const { showToast, showConfirm } = useToast();
   const pwa = usePWA();
@@ -105,7 +126,6 @@ function AppContent() {
   const [isWheelSpinning, setIsWheelSpinning] = useState<boolean>(false);
   const [wheelTargetDegrees, setWheelTargetDegrees] = useState<number | undefined>(undefined);
   const [landedCategoryName, setLandedCategoryName] = useState<string | null>(null);
-  const lastAnimatedSpinRef = useRef<string | null>(null);
   const spinPendingRef = useRef(false);
   const [spinPending, setSpinPending] = useState(false);
   const spinHoldTimerRef = useRef<number | undefined>(undefined);
@@ -263,9 +283,9 @@ function AppContent() {
     if (
       gameState.lastSpin &&
       gameState.currentTurnPlayerId !== account?.id &&
-      lastAnimatedSpinRef.current !== gameState.lastSpin.id
+      !hasSeenSpin(gameState.lastSpin.id)
     ) {
-      lastAnimatedSpinRef.current = gameState.lastSpin.id;
+      markSpinSeen(gameState.lastSpin.id);
       setWheelTargetDegrees(gameState.lastSpin.targetDegrees);
       setIsWheelSpinning(true);
       setLandedCategoryName(null);
@@ -273,7 +293,6 @@ function AppContent() {
   }, [gameState, account?.id]);
 
   useEffect(() => {
-    lastAnimatedSpinRef.current = null;
     lastReviewedResultKeyRef.current = null;
     setIsWheelSpinning(false);
     setWheelTargetDegrees(undefined);
@@ -359,25 +378,6 @@ function AppContent() {
   };
 
   const handleNavigateToLobby = () => {
-    if (gameState?.status === 'IN_PROGRESS') {
-      showConfirm({
-        title: 'Leave Match?',
-        message: 'You can resume this duel anytime from your duels dashboard.',
-        confirmText: 'Leave',
-        onConfirm: () => {
-          setActiveGameId(null);
-          setIsWheelSpinning(false);
-          setLandedCategoryName(null);
-          clearTimeout(resultReviewTimerRef.current);
-          lastReviewedResultKeyRef.current = null;
-          setActiveReviewResult(null);
-          setView('LOBBY');
-          window.history.pushState(null, '', '/');
-        },
-      });
-      return;
-    }
-
     setActiveGameId(null);
     setIsWheelSpinning(false);
     setLandedCategoryName(null);
@@ -399,7 +399,7 @@ function AppContent() {
     try {
       const res = await spin();
       if (res) {
-        lastAnimatedSpinRef.current = res.state.lastSpin?.id ?? null;
+        if (res.state.lastSpin?.id) markSpinSeen(res.state.lastSpin.id);
         setWheelTargetDegrees(res.targetDegrees);
         setIsWheelSpinning(true);
       }

@@ -16,10 +16,12 @@ import {
 } from '../../shared/src/index';
 import type { CloudflareD1Database } from './db/database';
 import { getDatabase } from './db/database';
+import { queryBudget } from './db/queryBudget';
 import {
   answerQuestion,
   chooseCrown,
   getGameStateSync,
+  GameSnapshotConflictError,
   resignGame,
   spinWheel
 } from './services/gameEngine';
@@ -53,7 +55,7 @@ app.use('*', async (c, next) => {
   // Query strings and Authorization headers can contain credentials.
   console.log(c.req.method, new URL(c.req.url).pathname);
   await next();
-  if (pushConfigured(c.env || {})) {
+  if (c.req.method !== 'GET' && pushConfigured(c.env || {})) {
     // Only Workers has an execution context. Bun uses its bounded background timer.
     try {
       c.executionCtx.waitUntil(getDatabase(c.env).then(db => drainPushOutbox(db, c.env)).catch(() => console.warn('Push delivery deferred')));
@@ -468,22 +470,46 @@ app.post('/api/questions/cache/clear', async (c) => {
 // SERVER-SENT EVENTS (SSE) FROM COMMITTED DATABASE STATE
 // -------------------------------------------------------------
 app.get('/api/games/:gameId/events', async (c) => {
-  const { db, token, account } = await authenticated(c);
+  const events = (callback: Parameters<typeof streamSSE>[1]) => {
+    const response = streamSSE(c, callback);
+    // Hono's SSE helper defaults to no-cache, which still permits storage.
+    c.header('Cache-Control', 'no-store');
+    response.headers.set('Cache-Control', 'no-store');
+    return response;
+  };
+  const budget = queryBudget(await getDatabase(c.env));
+  const db = budget.db;
+  const token = sessionToken(c);
+  const account = await getSession(db, token);
   if (!account) return c.text('Authentication required', 401);
   const gameId = c.req.param('gameId');
   if (!(await isGameParticipant(db, gameId, account.id))) return c.text('Game not found', 404);
-  const initial = await getGameStateSync(db, gameId);
-  if (!initial) return c.text('Game not found', 404);
+  // One coherent read costs at most eight statements. Expiry mutations are
+  // delegated to a fresh REST request, never started inside a depleted stream.
+  const snapshot = () => getGameStateSync(db, gameId, { attempts: 1, resolveExpired: false });
   c.header('Cache-Control', 'no-store');
-  return streamSSE(c, async (stream) => {
+  let initial: GameStateSync | null;
+  try { initial = await snapshot(); }
+  catch (error) {
+    if (!(error instanceof GameSnapshotConflictError)) throw error;
+    return events(async stream => { await stream.writeSSE({ event: 'reconnect', data: '{"refresh":true}' }); });
+  }
+  if (!initial) return c.text('Game not found', 404);
+  return events(async (stream) => {
     let revision = initial.revision;
     let lastAuthCheck = Date.now();
+    const started = Date.now();
+    const rotate = async (refresh = false) => { await stream.writeSSE({ event: 'reconnect', data: JSON.stringify({ refresh }) }); };
     await stream.writeSSE({ data: JSON.stringify(initial), event: 'sync', id: String(revision) });
     if (initial.status === 'COMPLETED') return;
+    if (initial.activeQuestion && Date.now() > initial.activeQuestion.startedAt + initial.activeQuestion.durationMs + QUESTION_ANSWER_GRACE_MS) { await rotate(true); return; }
     // All stream I/O remains in its originating request. No isolate-local subscriber map.
     while (!stream.aborted) {
       await stream.sleep(1000);
       if (stream.aborted) break;
+      // Reserve auth (including expired-session deletion), membership, poll,
+      // and one entire snapshot before starting a loop iteration.
+      if (!budget.fits(12) || Date.now() - started >= 20000) { await rotate(); return; }
       if (Date.now() - lastAuthCheck >= 15000) {
         if (!(await getSession(db, token)) || !(await isGameParticipant(db, gameId, account.id))) {
           await stream.writeSSE({ data: '{}', event: 'unauthorized' });
@@ -495,11 +521,17 @@ app.get('/api/games/:gameId/events', async (c) => {
       const row = await db.queryFirst<{ revision: number; active_question_json: string | null }>(
         'SELECT revision, active_question_json FROM games WHERE id = ?', [gameId]
       );
-      if (!row) return;
+      if (!row) { await stream.writeSSE({ event: 'not-found', data: '{}' }); return; }
       const question = row.active_question_json ? JSON.parse(row.active_question_json) as { startedAt: number; durationMs: number } : null;
       const expired = question && Date.now() > question.startedAt + question.durationMs + QUESTION_ANSWER_GRACE_MS;
+      if (expired) { await rotate(true); return; }
       if (row.revision === revision && !expired) continue;
-      const state = await getGameStateSync(db, gameId);
+      let state: GameStateSync | null;
+      try { state = await snapshot(); }
+      catch (error) {
+        if (!(error instanceof GameSnapshotConflictError)) throw error;
+        await rotate(true); return;
+      }
       if (!state) return;
       if (state.revision !== revision) {
         await stream.writeSSE({ data: JSON.stringify(state), event: 'sync', id: String(state.revision) });

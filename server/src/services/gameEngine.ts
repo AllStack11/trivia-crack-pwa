@@ -548,13 +548,17 @@ export async function resignGame(
      WHERE id = ?`, params: [opponentId, now, gameId] }]);
 }
 
+export class GameSnapshotConflictError extends Error {
+  constructor() { super('Game changed; refresh and try again'); }
+}
+
 /** Read a coherent snapshot, and resolve elapsed questions even if the player disconnected. */
-export async function getGameStateSync(db: AppDatabase, gameId: string): Promise<GameStateSync | null> {
-  for (let attempt = 0; attempt < 5; attempt++) {
+export async function getGameStateSync(db: AppDatabase, gameId: string, options: { attempts?: number; resolveExpired?: boolean } = {}): Promise<GameStateSync | null> {
+  for (let attempt = 0; attempt < (options.attempts ?? 5); attempt++) {
     const state = await buildGameStateSync(db, gameId);
     if (!state) return null;
     const question = state.activeQuestion;
-    if (state.status === 'IN_PROGRESS' && state.mode === 'QUESTION' && question &&
+    if (options.resolveExpired !== false && state.status === 'IN_PROGRESS' && state.mode === 'QUESTION' && question &&
         Date.now() > question.startedAt + question.durationMs + QUESTION_ANSWER_GRACE_MS) {
       try {
         await answerQuestion(db, gameId, state.currentTurnPlayerId, question.id, -1, 0);
@@ -567,7 +571,7 @@ export async function getGameStateSync(db: AppDatabase, gameId: string): Promise
     const current = await db.queryFirst<{ revision: number }>('SELECT revision FROM games WHERE id = ?', [gameId]);
     if (current?.revision === state.revision) return state;
   }
-  throw new Error('Game changed; refresh and try again');
+  throw new GameSnapshotConflictError();
 }
 
 /**

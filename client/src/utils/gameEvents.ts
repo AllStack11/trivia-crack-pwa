@@ -1,7 +1,10 @@
 /** Parse fetch-based SSE, including frames split across network chunks. */
-export async function readGameEvents(response: Response, onEvent: (event: string, data: string) => void): Promise<void> {
+export async function readGameEvents(response: Response, onEvent: (event: string, data: string) => void, signal?: AbortSignal): Promise<void> {
   if (!response.body) throw new Error('Missing event stream');
   const reader = response.body.getReader();
+  const cancel = () => { void reader.cancel().catch(() => {}); };
+  signal?.addEventListener('abort', cancel, { once: true });
+  if (signal?.aborted) cancel();
   const decoder = new TextDecoder();
   let pending = '';
   try {
@@ -18,11 +21,12 @@ export async function readGameEvents(response: Response, onEvent: (event: string
           if (line.startsWith('event:')) event = line.slice(6).trimStart();
           if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
         }
-        if (data.length) onEvent(event, data.join('\n'));
+        if (data.length && !signal?.aborted) onEvent(event, data.join('\n'));
       }
       if (done) return;
     }
   } finally {
+    signal?.removeEventListener('abort', cancel);
     await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
