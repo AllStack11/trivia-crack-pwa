@@ -148,6 +148,83 @@ body { background: #c5eee8; font-family: 'Trebuchet MS', 'Arial Rounded MT Bold'
 .compact .party-side { width: 85px; height: 85px; }
 .play-cta { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 18px; color: white !important; font-weight: 900; font-size: 17px; background: linear-gradient(#62c859,#35a746); border: 2px solid #eefec9; border-radius: 22px; box-shadow: 0 5px 0 #25883a, 0 8px 18px #308f3030; margin: 4px 0 12px; }
 .play-cta:active { transform: translateY(3px); box-shadow: 0 2px 0 #25883a; }
+
+/* Mobile Native Circular Refresh Button */
+.trivia-app .refresh-orb {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  min-height: 38px !important;
+  max-width: 38px !important;
+  max-height: 38px !important;
+  padding: 0 !important;
+  border-radius: 9999px !important;
+  aspect-ratio: 1 / 1 !important;
+  color: #176374 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #edf7f4 100%) !important;
+  border: 1.5px solid #bce3db !important;
+  box-shadow: 0 3px 0 #9fcbc1, 0 4px 10px rgba(28, 92, 108, 0.12), inset 0 1px 0 #ffffff !important;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  cursor: pointer;
+  transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.12s ease;
+}
+
+/* Expand touch target to 46px for mobile accessibility (Apple HIG 44px+) */
+.trivia-app .refresh-orb::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: -4px;
+  right: -4px;
+  border-radius: 9999px;
+}
+
+.trivia-app .refresh-orb:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #e3f4ef 100%) !important;
+  border-color: #a8dcd1 !important;
+}
+
+.trivia-app .refresh-orb:active {
+  transform: translateY(2px) scale(0.95);
+  box-shadow: 0 1px 0 #9fcbc1, 0 2px 4px rgba(28, 92, 108, 0.08), inset 0 1px 0 #ffffff !important;
+}
+
+.trivia-app .refresh-orb:focus-visible {
+  outline: 3px solid #166dad;
+  outline-offset: 2px;
+}
+
+.trivia-app .refresh-orb[data-syncing="true"] {
+  box-shadow: 0 3px 0 #9fcbc1, 0 0 0 3.5px rgba(23, 152, 117, 0.25), 0 4px 12px rgba(23, 152, 117, 0.15), inset 0 1px 0 #ffffff !important;
+}
+
+.trivia-app .refresh-orb svg {
+  color: #176374 !important;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.05));
+  transition: transform 0.2s ease;
+}
+
+.refresh-orb-spin {
+  animation: refreshOrbSpin 0.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transform-origin: center center;
+}
+
+@keyframes refreshOrbSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh-orb-spin {
+    animation-duration: 1.8s;
+  }
+}
 @media (min-width: 700px) { .game-world-art { background-size: auto 100%; } }
 @media (max-width: 360px) { .game-wordmark { font-size: 14px; } .game-header { padding-inline: 10px; } .game-header button { width: 40px; min-height: 40px; } .category-confetti span { padding-inline: 5px; } }
 @media (prefers-reduced-motion: reduce) {

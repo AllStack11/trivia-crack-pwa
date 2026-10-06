@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import {
   Swords,
   Users,
@@ -188,6 +187,7 @@ export default function Lobby({
     request.promise = (async () => {
       const generation = ++dashboardGeneration.current;
       const current = () => activeToken.current === account.token && dashboardGeneration.current === generation;
+      const startTime = Date.now();
       setIsRefreshing(true);
       try {
         const [playerData, inviteData, matchData] = await Promise.all([
@@ -208,7 +208,19 @@ export default function Lobby({
       } catch (error) {
         if (current() && !controller.signal.aborted) showToast(error instanceof Error ? error.message : 'Could not refresh matches', 'error');
       } finally {
-        if (current()) setIsRefreshing(false);
+        const elapsed = Date.now() - startTime;
+        const remaining = Math.max(0, 750 - elapsed);
+        if (remaining > 0) {
+          setTimeout(() => {
+            if (current()) {
+              setIsRefreshing(false);
+            }
+          }, remaining);
+        } else {
+          if (current()) {
+            setIsRefreshing(false);
+          }
+        }
         if (dashboardRequest.current === request) dashboardRequest.current = null;
       }
     })();
@@ -491,23 +503,6 @@ export default function Lobby({
 
   return (
     <div className="flex-1 flex flex-col w-full h-full max-w-lg mx-auto relative overflow-hidden select-none">
-      {/* Pull-to-refresh Indicator */}
-      <AnimatePresence>
-        {isRefreshing && (
-          <motion.div
-            initial={{ opacity: 0, y: -16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -16 }}
-            className="absolute top-2 inset-x-0 z-30 flex justify-center pointer-events-none"
-          >
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-900/90 border border-indigo-500/50 shadow-lg text-xs font-semibold text-indigo-200 backdrop-blur-md">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-              <span>Updating matches...</span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Main Content Area */}
       {!account ? (
         /* ================= UNAUTHENTICATED HERO SELECTOR ================= */
@@ -679,11 +674,14 @@ export default function Lobby({
                   </h3>
                   <button
                     type="button"
-                    onClick={() => void refreshDashboard()}
-                    className="p-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                    onClick={() => { triggerHaptic('light'); void refreshDashboard(); }}
+                    className="refresh-orb"
+                    data-syncing={isRefreshing}
+                    aria-label="Refresh matches"
+                    aria-busy={isRefreshing}
                     title="Refresh matches"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'refresh-orb-spin' : ''}`} strokeWidth={2.4} />
                   </button>
                 </div>
 

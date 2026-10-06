@@ -14,6 +14,7 @@ export function useAppUpdate() {
       registration = value;
       registration.addEventListener('updatefound', track);
       track();
+      void registration.update().catch(() => {});
     });
     const resume = () => { if (document.visibilityState === 'visible') { check(); void registration?.update().catch(() => {}); } };
     document.addEventListener('visibilitychange', resume);

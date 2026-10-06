@@ -1,4 +1,5 @@
-const CACHE_NAME = 'trivia-clash-v8';
+// Vite replaces this development cache name with a unique version on every build.
+const CACHE_NAME = 'trivia-clash-dev';
 const CACHE_PREFIX = 'trivia-clash-';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json', '/icons/app-192-crown-v1.png', '/icons/app-512-crown-v1.png',
   '/icons/app-maskable-512-crown-v1.png', '/icons/apple-touch-icon-crown-v1.png', '/icons/favicon-32-crown-v1.png'];
