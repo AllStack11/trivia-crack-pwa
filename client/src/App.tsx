@@ -40,6 +40,7 @@ import AppHeader from './components/navigation/AppHeader';
 import OfflineBanner from './components/ui/OfflineBanner';
 import PWAInstallBanner from './components/ui/PWAInstallBanner';
 import IOSInstallSheet from './components/ui/IOSInstallSheet';
+import InstallNotificationModal from './components/ui/InstallNotificationModal';
 import { ToastProvider, useToast } from './components/ui/Toast';
 import { usePWA, setAppBadge } from './hooks/usePWA';
 import { usePushNotifications } from './hooks/usePushNotifications';
@@ -583,6 +584,7 @@ function AppContent() {
       />}
 
       {/* iOS Safari Home-Screen Guide Sheet */}
+      <InstallNotificationModal installed={pwa.isInstalled} signedIn={!!account} push={push} />
       <IOSInstallSheet
         isOpen={showIOSSheet}
         onClose={() => setShowIOSSheet(false)}
