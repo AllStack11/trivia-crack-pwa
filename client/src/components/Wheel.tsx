@@ -348,7 +348,8 @@ export default function Wheel({
       categoryImages.current[config.slice] = image;
       image.onload = complete;
       image.onerror = complete;
-      image.src = `/art/wheel-icons/${config.slice.toLowerCase()}.webp`;
+      const extension = ['MEMES', 'CUSTOM', 'MOVIES_TV', 'VIDEO_GAMES'].includes(config.slice) ? 'png' : 'webp';
+      image.src = `/art/wheel-icons/${config.slice.toLowerCase()}.${extension}`;
     }
     return () => { active = false; };
   }, [SLICE_CONFIGS]);

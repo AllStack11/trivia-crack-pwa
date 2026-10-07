@@ -1,6 +1,6 @@
 # Wheel category icons
 
-Generated with the built-in image-generation tool. Optimized to 256 x 256 transparent WebP for the mobile wheel. Original character artwork is separate and unchanged.
+Generated with the built-in image-generation tool. Original icons use 256 x 256 transparent WebP; the four new category icons use transparent PNG. Original character artwork is separate and unchanged.
 
 ## Subjects
 
@@ -11,6 +11,12 @@ Generated with the built-in image-generation tool. Optimized to 256 x 256 transp
 - Art: an ivory painter palette with bright red blue green yellow paint dabs and one small paintbrush
 - Entertainment: a black and ivory film clapperboard with hot pink edges, absolutely no lettering or numbers
 - Crown: a gleaming golden royal crown with three tall points and small red teal violet gems
+- Memes: overlapping violet speech bubbles with a golden sparkle
+- Custom: a teal puzzle piece with a yellow pencil
+- Movies/TV: an indigo retro television with golden antenna
+- Video Games: a cyan controller with violet and coral buttons
+
+Exact prompts for the new icons are recorded in [new-icon-prompts.md](new-icon-prompts.md).
 
 ## Shared generation prompt
 
