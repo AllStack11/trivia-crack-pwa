@@ -67,7 +67,8 @@ describe('QuestionView Component Rendering & Contract Tests', () => {
     expect(html).toContain('result-quote');
     expect(html).toContain('result-title');
     expect(html).toContain('text-emerald-800');
-    expect(html).toContain('text-emerald-700');
+    expect(html).toContain('Answer: H2O');
+    expect(html.indexOf('result-banner')).toBeLessThan(html.indexOf('What is the chemical formula'));
     expect(html).toContain('result-continue-btn');
     // Options must be disabled when lastResult is shown
     expect(html).toContain('disabled=""');
@@ -98,7 +99,7 @@ describe('QuestionView Component Rendering & Contract Tests', () => {
     expect(html).toContain('result-quote');
     expect(html).toContain('result-title');
     expect(html).toContain('text-rose-900');
-    expect(html).toContain('text-rose-700');
+    expect(html).toContain('Answer: H2O');
     expect(html).toContain('result-continue-btn');
   });
 });

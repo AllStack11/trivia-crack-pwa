@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import type {
   ActiveQuestionSync,
   QuestionResult,
@@ -7,8 +7,9 @@ import type {
 } from '../../shared/src/index';
 import { CATEGORIES, SPIN_RESULT_HOLD_MS } from '../../shared/src/index';
 
-/** How long the answered question and its result stay on screen. */
-const RESULT_REVIEW_MS = 7500;
+import { SIDEKICK_MS, createDialogueSelector, crownReaction } from './components/characters/reactions';
+import CharacterReaction from './components/characters/CharacterReaction';
+import { createReviewTimer } from './utils/reviewTimer';
 import CrownBar from './components/CrownBar';
 import CrownModal from './components/CrownModal';
 import Lobby from './components/Lobby';
@@ -70,6 +71,7 @@ const markSpinSeen = (id: string) => {
 
 function AppContent() {
   const { showToast, showConfirm } = useToast();
+  const reducedMotion = useReducedMotion();
   const pwa = usePWA();
 
   const [view, setView] = useState<AppView>('LOBBY');
@@ -93,7 +95,7 @@ function AppContent() {
         setView('GAME');
         setIsWheelSpinning(false);
         setLandedCategoryName(null);
-        clearTimeout(resultReviewTimerRef.current);
+        reviewTimer.cancel();
         lastReviewedResultKeyRef.current = null;
         setActiveReviewResult(null);
         return;
@@ -135,13 +137,20 @@ function AppContent() {
   const [spinPending, setSpinPending] = useState(false);
   const spinHoldTimerRef = useRef<number | undefined>(undefined);
 
-  // Result review state: keeps question on screen for 3s to show green/red indicator
+  // Result review stays visible for six seconds, with immediate dismissal.
   const [activeReviewResult, setActiveReviewResult] = useState<{
     question: ActiveQuestionSync;
     result: QuestionResult;
+    quote: string;
   } | null>(null);
-  const resultReviewTimerRef = useRef<number | undefined>(undefined);
+  const [reviewTimer] = useState(createReviewTimer);
   const lastReviewedResultKeyRef = useRef<string | null>(null);
+  const [selectDialogue] = useState(createDialogueSelector);
+  const [sidekick, setSidekick] = useState<(NonNullable<ReturnType<typeof crownReaction>> & { quote: string }) | null>(null);
+  const sidekickTimerRef = useRef<number | undefined>(undefined);
+  const previousReviewRef = useRef<typeof activeReviewResult>(null);
+  const reviewGenerationRef = useRef(0);
+
 
   // Restore credentials only after the server confirms the account session
   useEffect(() => {
@@ -300,27 +309,35 @@ function AppContent() {
   }, [gameState, account?.id]);
 
   useEffect(() => {
+    reviewGenerationRef.current++;
     lastReviewedResultKeyRef.current = null;
+    previousReviewRef.current = null;
+    setSidekick(null);
+    clearTimeout(sidekickTimerRef.current);
     setIsWheelSpinning(false);
     setWheelTargetDegrees(undefined);
     setLandedCategoryName(null);
     setActiveReviewResult(null);
     return () => {
-      clearTimeout(resultReviewTimerRef.current);
+      reviewTimer.cancel();
       clearTimeout(spinHoldTimerRef.current);
+      clearTimeout(sidekickTimerRef.current);
     };
-  }, [activeGameId]);
+  }, [activeGameId, account?.id, view]);
 
   useEffect(() => {
     if (gameState?.mode === 'QUESTION') {
-      setActiveReviewResult((review) => review?.question.id === gameState.activeQuestion?.id ? review : null);
+      if (activeReviewResult && activeReviewResult.question.id !== gameState.activeQuestion?.id) {
+        reviewTimer.cancel();
+        setActiveReviewResult(null);
+      }
     }
-  }, [gameState?.mode, gameState?.activeQuestion?.id]);
+  }, [gameState?.mode, gameState?.activeQuestion?.id, activeReviewResult, reviewTimer]);
 
-  // When spectator receives opponent's answer result (via SSE or polling), display result review for 3s
+  // Both players review each unique result once, including SSE/polling observations.
   useEffect(() => {
     // Only show completed answer review when not in the middle of a question
-    if (!gameState?.lastResult || gameState.mode === 'QUESTION') return;
+    if (view !== 'GAME' || gameState?.id !== activeGameId || !gameState?.lastResult || gameState.mode === 'QUESTION') return;
 
     const result = gameState.lastResult;
     const reviewQuestion = result.question;
@@ -333,18 +350,29 @@ function AppContent() {
     setActiveReviewResult({
       question: reviewQuestion,
       result: result,
+      quote: selectDialogue(reviewQuestion.id, reviewQuestion.category, result.wasCorrect ? 'correct' : 'incorrect'),
     });
-    clearTimeout(resultReviewTimerRef.current);
-    resultReviewTimerRef.current = window.setTimeout(() => {
-      setActiveReviewResult(null);
-    }, RESULT_REVIEW_MS);
-  }, [gameState?.lastResult, gameState?.mode]);
+    reviewTimer.start(() => setActiveReviewResult(null));
+  }, [gameState?.lastResult, gameState?.mode, activeGameId, view, selectDialogue, reviewTimer]);
   useEffect(() => {
     return () => {
-      clearTimeout(resultReviewTimerRef.current);
+      reviewTimer.cancel();
     };
   }, []);
 
+
+  useEffect(() => {
+    const previous = previousReviewRef.current;
+    previousReviewRef.current = activeReviewResult;
+    clearTimeout(sidekickTimerRef.current);
+    setSidekick(null);
+    if (view !== 'GAME' || gameState?.mode === 'QUESTION' || activeReviewResult || !previous) return;
+    const milestone = crownReaction(previous.result);
+    if (!milestone) return;
+    setSidekick({ ...milestone, quote: selectDialogue(previous.question.id, milestone.category, milestone.event) });
+    sidekickTimerRef.current = window.setTimeout(() => setSidekick(null), SIDEKICK_MS);
+    return () => clearTimeout(sidekickTimerRef.current);
+  }, [activeReviewResult, gameState?.mode, activeGameId, view, selectDialogue]);
 
   const audioTrackerRef = useRef(new GameAudioTracker());
   useEffect(() => installAudioLifecycle(), []);
@@ -363,17 +391,17 @@ function AppContent() {
       if (cue === 'incorrect' || cue === 'timeout' || cue === 'defeat') triggerHaptic('error');
       if (cue === 'victory') {
         triggerHaptic('heavy');
-        confetti({ particleCount: 140, spread: 85, origin: { y: .45 } });
+        if (!reducedMotion) confetti({ particleCount: 140, spread: 85, origin: { y: .45 } });
       }
     }
-  }, [gameState, activeGameId, account, view]);
+  }, [gameState, activeGameId, account, view, reducedMotion]);
 
   const handleOpenGame = (gameId: string) => {
     setActiveGameId(gameId);
     setView('GAME');
     setIsWheelSpinning(false);
     setLandedCategoryName(null);
-    clearTimeout(resultReviewTimerRef.current);
+    reviewTimer.cancel();
     lastReviewedResultKeyRef.current = null;
     setActiveReviewResult(null);
     window.history.pushState(null, '', `/game/${encodeURIComponent(gameId)}`);
@@ -388,7 +416,7 @@ function AppContent() {
     setActiveGameId(null);
     setIsWheelSpinning(false);
     setLandedCategoryName(null);
-    clearTimeout(resultReviewTimerRef.current);
+    reviewTimer.cancel();
     lastReviewedResultKeyRef.current = null;
     setActiveReviewResult(null);
     setView('LOBBY');
@@ -401,7 +429,7 @@ function AppContent() {
     spinPendingRef.current = true;
     setSpinPending(true);
     setLandedCategoryName(null);
-    clearTimeout(resultReviewTimerRef.current);
+    reviewTimer.cancel();
     setActiveReviewResult(null);
     try {
       const res = await spin();
@@ -429,23 +457,29 @@ function AppContent() {
     }, SPIN_RESULT_HOLD_MS);
   }, []);
 
+  const answerContextRef = useRef({ gameId: activeGameId, accountId: account?.id, view, questionId: gameState?.activeQuestion?.id });
+  answerContextRef.current = { gameId: activeGameId, accountId: account?.id, view, questionId: gameState?.activeQuestion?.id };
+
   const handleAnswerQuestion = async (
     targetQuestion: ActiveQuestionSync,
     ansIdx: number,
     timeMs: number
   ) => {
+    const context = answerContextRef.current;
+    const generation = reviewGenerationRef.current;
     const res = await answer(targetQuestion.id, ansIdx, timeMs);
+    const current = answerContextRef.current;
+    if (generation !== reviewGenerationRef.current || context.gameId !== current.gameId || context.accountId !== current.accountId || current.view !== 'GAME' || (current.questionId && current.questionId !== targetQuestion.id)) return false;
     if (res) {
       const resultKey = `${targetQuestion.id}_${res.nextPlayerId}_${res.wasCorrect}_${res.correctIndex}`;
+      if (lastReviewedResultKeyRef.current === resultKey) return true;
       lastReviewedResultKeyRef.current = resultKey;
       setActiveReviewResult({
         question: targetQuestion,
         result: res,
+        quote: selectDialogue(targetQuestion.id, targetQuestion.category, res.wasCorrect ? 'correct' : 'incorrect'),
       });
-      clearTimeout(resultReviewTimerRef.current);
-      resultReviewTimerRef.current = window.setTimeout(() => {
-        setActiveReviewResult(null);
-      }, RESULT_REVIEW_MS);
+      reviewTimer.start(() => setActiveReviewResult(null));
       return true;
     }
     return false;
@@ -633,7 +667,7 @@ function AppContent() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 40 }}
               transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-              className="flex-1 flex flex-col max-w-md mx-auto w-full h-full overflow-hidden justify-between z-20 px-3 py-1"
+              className="flex-1 flex flex-col max-w-md mx-auto w-full h-full overflow-y-auto justify-between z-20 px-3 py-1"
             >
               {/* Connection Status indicator */}
               <div className="flex items-center justify-between px-2 py-1">
@@ -671,7 +705,7 @@ function AppContent() {
               <CrownBar state={gameState} myPlayerId={account.id} />
 
               {/* Center Stage Area */}
-              <div className="flex-1 min-h-0 flex flex-col justify-center items-center py-1 overflow-y-auto w-full">
+              <div className="flex-1 min-h-0 flex flex-col items-center py-1 overflow-y-auto w-full">
                 {/* STAGE: WHEEL */}
                 {shouldShowWheel && (
                   <div className="w-full flex flex-col items-center justify-center relative">
@@ -698,7 +732,7 @@ function AppContent() {
                 {/* STAGE: QUESTION */}
                 {shouldShowQuestion &&
                   (activeReviewResult || gameState.activeQuestion) && (
-                    <div className="w-full h-full flex flex-col justify-center">
+                    <div className="w-full flex flex-col">
                       <QuestionView
                         key={activeReviewResult?.question.id ?? gameState.activeQuestion?.id}
                         question={
@@ -720,9 +754,9 @@ function AppContent() {
                         lastResult={
                           activeReviewResult ? activeReviewResult.result : undefined
                         }
+                        reactionQuote={activeReviewResult?.quote}
                         onDismissResult={() => {
-                          clearTimeout(resultReviewTimerRef.current);
-                          setActiveReviewResult(null);
+                          reviewTimer.dismiss();
                         }}
                       />
                     </div>
@@ -814,6 +848,11 @@ function AppContent() {
                   </Card>
                 )}
               </div>
+              {sidekick && !activeReviewResult && gameState.mode !== 'QUESTION' && (
+                <div className="shrink-0 pt-2" style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
+                  <CharacterReaction category={sidekick.category} quote={sidekick.quote} onClose={() => { clearTimeout(sidekickTimerRef.current); setSidekick(null); }} />
+                </div>
+              )}
             </motion.main>
           )}
 

@@ -326,3 +326,9 @@ body { background: #c5eee8; font-family: 'Trebuchet MS', 'Arial Rounded MT Bold'
   border-color: #818cf8;
   color: white;
 }
+
+/* Character dialogue keeps its own contrast on the illustrated game surface. */
+.trivia-app .character-reaction .result-quote { opacity: 1; background: #fff; }
+.trivia-app .character-reaction .reaction-answer { color: #173f50 !important; }
+.trivia-app .character-reaction .result-title { opacity: 1; }
+.trivia-app .character-reaction.sidekick-bubble { padding-right: 2.5rem; }

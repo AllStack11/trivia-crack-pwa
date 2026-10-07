@@ -1,6 +1,6 @@
 import { questionTimeRemaining } from '../utils/gameState';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import type { ActiveQuestionSync, Category, QuestionResult } from '../../../shared/src/index';
 import { CATEGORIES } from '../../../shared/src/index';
 import { playAudioCue, playButtonPop } from '../utils/audio';
@@ -9,13 +9,16 @@ import { requestWakeLock, releaseWakeLock } from '../hooks/usePWA';
 import confetti from 'canvas-confetti';
 import CategoryCharacter, { type CharacterMood } from './characters/CategoryCharacter';
 import { CHARACTER_PROFILES } from './characters/characterData';
-import { Sparkles, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import CharacterReaction from './characters/CharacterReaction';
+import { createDialogueSelector } from './characters/reactions';
+import { AlertCircle, CheckCircle, Clock } from 'lucide-react';
 
 interface QuestionViewProps {
   question: ActiveQuestionSync;
   isMyTurn: boolean;
   onAnswer: (answerIndex: number, timeSpentMs: number) => void | boolean | Promise<void | boolean>;
   lastResult?: QuestionResult;
+  reactionQuote?: string;
   onDismissResult?: () => void;
 }
 
@@ -24,8 +27,12 @@ export default function QuestionView({
   isMyTurn,
   onAnswer,
   lastResult,
+  reactionQuote,
   onDismissResult,
 }: QuestionViewProps) {
+  const reducedMotion = useReducedMotion();
+  const [selectDialogue] = useState(createDialogueSelector);
+  const quote = lastResult ? reactionQuote ?? selectDialogue(question.id, question.category, lastResult.wasCorrect ? 'correct' : 'incorrect') : '';
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [timeLeftMs, setTimeLeftMs] = useState<number>(questionTimeRemaining(question));
   const [isImageLightboxOpen, setIsImageLightboxOpen] = useState<boolean>(false);
@@ -128,7 +135,7 @@ export default function QuestionView({
     if (lastResult) {
       void releaseWakeLock();
       if (lastResult.wasCorrect) {
-        if (lastResult.awardedCrown || lastResult.stolenCrown) {
+        if (!reducedMotion && (lastResult.awardedCrown || lastResult.stolenCrown)) {
           confetti({
             particleCount: 90,
             spread: 80,
@@ -137,7 +144,7 @@ export default function QuestionView({
         }
       }
     }
-  }, [lastResult]);
+  }, [lastResult, reducedMotion]);
 
   const handleSelectOption = useCallback(
     (index: number) => {
@@ -192,7 +199,7 @@ export default function QuestionView({
   const optionLetters = ['A', 'B', 'C', 'D'];
 
   return (
-    <div className="flex flex-col w-full max-w-md mx-auto h-full justify-between relative z-20 select-none pb-4">
+    <div className="flex flex-col w-full max-w-md mx-auto relative z-20 select-none pb-4">
       <div className="flex flex-col w-full rounded-3xl bg-slate-900/95 border border-slate-700/80 shadow-2xl overflow-hidden backdrop-blur-xl">
         {/* Category Header Banner with Mascot & Timer */}
         <div
@@ -213,7 +220,7 @@ export default function QuestionView({
               />
               <motion.div
                 key={emojiBubble}
-                initial={{ scale: 0, y: 5 }}
+                initial={reducedMotion ? false : { scale: 0, y: 5 }}
                 animate={{ scale: 1, y: 0 }}
                 transition={{ type: 'spring', damping: 15 }}
                 className="absolute -top-1.5 -right-2 text-xs bg-slate-950/80 px-1 py-0.5 rounded-full border border-white/30 shadow"
@@ -261,6 +268,7 @@ export default function QuestionView({
 
         {/* Question Content */}
         <div className="p-4 sm:p-5 flex-1 flex flex-col justify-center">
+          {lastResult && <CharacterReaction key={question.id} category={question.category} quote={quote} result={lastResult} onContinue={onDismissResult ? () => { playButtonPop(); onDismissResult(); } : undefined} />}
           {/* Optional Question Image */}
           {question.imageUrl && !imageError && (
             <div className="relative mb-3 flex flex-col items-center">
@@ -330,9 +338,9 @@ export default function QuestionView({
               return (
                 <motion.button
                   key={idx}
-                  initial={{ opacity: 0, y: 12 }}
+                  initial={reducedMotion || lastResult ? false : { opacity: 0, y: 12 }}
                   animate={
-                    isIncorrectSelection
+                    isIncorrectSelection && !reducedMotion
                       ? { x: [-8, 8, -6, 6, -3, 3, 0], opacity: 1, y: 0 }
                       : { opacity: 1, y: 0 }
                   }
@@ -377,77 +385,6 @@ export default function QuestionView({
             })}
           </div>
 
-          {/* High Impact Result Announcement */}
-          <AnimatePresence>
-            {lastResult && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 15 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className={`mt-4 p-4 rounded-3xl border text-center shadow-xl backdrop-blur-xl relative overflow-hidden ${
-                  lastResult.wasCorrect
-                    ? 'result-banner result-banner-correct bg-emerald-50 border-emerald-300 text-emerald-950'
-                    : 'result-banner result-banner-incorrect bg-rose-50 border-rose-300 text-rose-950'
-                }`}
-              >
-                {/* Host Reaction Quote */}
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <CategoryCharacter
-                    category={question.category}
-                    size="sm"
-                    mood={lastResult.wasCorrect ? 'celebrating' : 'defeated'}
-                  />
-                  <div
-                    className={`result-quote text-xs font-black ${
-                      lastResult.wasCorrect ? 'text-emerald-800' : 'text-rose-900'
-                    }`}
-                  >
-                    {lastResult.wasCorrect
-                      ? `"${characterProfile.quotes.correct}"`
-                      : `"${characterProfile.quotes.incorrect}"`}
-                  </div>
-                </div>
-
-                <div
-                  className={`result-title font-black text-sm sm:text-base tracking-wide ${
-                    lastResult.wasCorrect ? 'text-emerald-700' : 'text-rose-700'
-                  }`}
-                >
-                  {lastResult.wasCorrect ? 'CORRECT ANSWER!' : 'INCORRECT!'}
-                </div>
-
-                {lastResult.awardedCrown && (
-                  <div className="text-xs font-black text-amber-700 mt-1 flex items-center justify-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                    <span>CROWN CLAIMED! You conquered {categoryInfo.name}!</span>
-                  </div>
-                )}
-                {lastResult.stolenCrown && (
-                  <div className="text-xs font-black text-amber-700 mt-1 flex items-center justify-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                    <span>CROWN STOLEN FROM OPPONENT!</span>
-                  </div>
-                )}
-
-                {onDismissResult && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      playButtonPop();
-                      onDismissResult();
-                    }}
-                    className={`result-continue-btn mt-3 py-2 px-6 rounded-xl font-black text-xs transition-all shadow-md active:scale-95 text-white ${
-                      lastResult.wasCorrect
-                        ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'
-                        : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30'
-                    }`}
-                  >
-                    Continue &rarr;
-                  </button>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
       </div>
 
