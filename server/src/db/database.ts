@@ -59,6 +59,14 @@ CREATE TABLE IF NOT EXISTS games (
 
 -- The guard and all game writes share one D1 batch / SQLite transaction.
 -- A stale revision aborts the entire batch before any answer or crown is changed.
+CREATE TABLE IF NOT EXISTS game_presence (
+  game_id TEXT NOT NULL,
+  player_id TEXT NOT NULL,
+  connection_id TEXT NOT NULL,
+  seen_at INTEGER NOT NULL,
+  PRIMARY KEY(game_id, player_id, connection_id)
+);
+
 CREATE TABLE IF NOT EXISTS game_mutation_guards (
   game_id TEXT PRIMARY KEY,
   expected_revision INTEGER NOT NULL

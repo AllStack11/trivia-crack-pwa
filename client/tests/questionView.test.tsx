@@ -63,11 +63,12 @@ describe('QuestionView Component Rendering & Contract Tests', () => {
 
     // Result banner must be present
     expect(html).toContain('CORRECT ANSWER!');
-    expect(html).toContain('result-banner-correct');
+    expect(html).toContain('reaction-correct');
     expect(html).toContain('result-quote');
     expect(html).toContain('result-title');
-    expect(html).toContain('text-emerald-800');
-    expect(html).toContain('Answer: H2O');
+    expect(html).toContain('cartoon-pop-in');
+    expect(html).toContain('Correct answer');
+    expect(html).toContain('class="reaction-answer">H2O');
     expect(html.indexOf('result-banner')).toBeLessThan(html.indexOf('What is the chemical formula'));
     expect(html).toContain('result-continue-btn');
     // Options must be disabled when lastResult is shown
@@ -95,11 +96,12 @@ describe('QuestionView Component Rendering & Contract Tests', () => {
     );
 
     expect(html).toContain('INCORRECT!');
-    expect(html).toContain('result-banner-incorrect');
+    expect(html).toContain('reaction-incorrect');
     expect(html).toContain('result-quote');
     expect(html).toContain('result-title');
-    expect(html).toContain('text-rose-900');
-    expect(html).toContain('Answer: H2O');
+    expect(html).toContain('cartoon-speech');
+    expect(html).toContain('Correct answer');
+    expect(html).toContain('class="reaction-answer">H2O');
     expect(html).toContain('result-continue-btn');
   });
 });

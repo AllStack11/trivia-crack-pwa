@@ -2,7 +2,7 @@ import { apiUrl } from '../utils/api';
 import { foregroundSync } from '../utils/foregroundSync';
 import { isNewGameState } from '../utils/gameState';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Category, GameStateSync, QuestionResult, SpinResponse } from '../../../shared/src/index';
+import type { Category, GameStateSync, MatchPresenceResponse, QuestionResult, SpinResponse } from '../../../shared/src/index';
 
 interface UseGameSyncOptions {
   gameId: string | null;
@@ -14,7 +14,9 @@ interface UseGameSyncOptions {
 
 export function useGameSync({ gameId, accountId, sessionToken, onUnauthorized, initialState = null }: UseGameSyncOptions) {
   const [gameState, setGameState] = useState<GameStateSync | null>(initialState);
+  const [snapshotGeneration, setSnapshotGeneration] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
+  const [presence, setPresence] = useState<MatchPresenceResponse | null>(null);
   const [loading, setLoading] = useState(!initialState && Boolean(gameId));
   const [error, setError] = useState<string | null>(null);
   const stateRef = useRef<GameStateSync | null>(initialState);
@@ -30,6 +32,7 @@ export function useGameSync({ gameId, accountId, sessionToken, onUnauthorized, i
   useEffect(() => {
     stateRef.current = initialState;
     setGameState(initialState);
+    setSnapshotGeneration(generation);
     setLoading(!initialState && Boolean(gameId));
     setError(null);
   }, [gameId, sessionToken, initialState]);
@@ -38,6 +41,7 @@ export function useGameSync({ gameId, accountId, sessionToken, onUnauthorized, i
     if (!current() || !isNewGameState(stateRef.current, data, gameId)) return false;
     stateRef.current = data;
     setGameState(data);
+    setSnapshotGeneration(generation);
     setLoading(false);
     setError(null);
     if (data.status === 'COMPLETED') lifecycleRef.current?.pause();
@@ -58,6 +62,57 @@ export function useGameSync({ gameId, accountId, sessionToken, onUnauthorized, i
   }, [current, onUnauthorized]);
 
   const refresh = useCallback(async () => { await lifecycleRef.current?.refresh(); }, []);
+
+  useEffect(() => {
+    setPresence(null);
+    if (!gameId || !sessionToken || gameState?.status === 'COMPLETED') return;
+    const connectionId = crypto.randomUUID();
+    const path = '/api/games/' + encodeURIComponent(gameId) + '/presence';
+    let stopped = false;
+    let pending: AbortController | null = null;
+    let expiry: ReturnType<typeof setTimeout> | undefined;
+    let terminal = false;
+    const release = () => {
+      pending?.abort(); pending = null;
+      clearTimeout(expiry);
+      setPresence(null);
+      void authFetch(path, { method:'POST', keepalive:true, headers:{'Content-Type':'application/json'}, body:JSON.stringify({connectionId, active:false}) }).catch(() => {});
+    };
+    const heartbeat = async () => {
+      if (stopped || terminal || !current()) return;
+      if (document.visibilityState !== 'visible' || !navigator.onLine) { release(); return; }
+      if (pending) return;
+      const controller = new AbortController(); pending = controller;
+      try {
+        const response = await authFetch(path, { method:'POST', signal:AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]), headers:{'Content-Type':'application/json'}, body:JSON.stringify({connectionId, active:true}) });
+        if (stopped || !current() || controller.signal.aborted) return;
+        if (response.status === 401 || response.status === 404) { terminal = true; setPresence(null); if (response.status === 401) onUnauthorized?.(); return; }
+        if (!response.ok) throw new Error('Presence unavailable');
+        const data = await response.json() as MatchPresenceResponse;
+        if (stopped || !current() || controller.signal.aborted || data.gameId !== gameId) return;
+        setPresence(data);
+        clearTimeout(expiry);
+        expiry = setTimeout(() => { if (!stopped && current()) setPresence(null); }, Math.min(data.expiresInMs, 30_000));
+      } catch { if (!stopped && current() && !controller.signal.aborted) setPresence(null); }
+      finally { if (pending === controller) pending = null; }
+    };
+    const reconcile = () => { void heartbeat(); };
+    void heartbeat();
+    const interval = setInterval(reconcile, 10_000);
+    document.addEventListener('visibilitychange', reconcile);
+    window.addEventListener('online', reconcile);
+    window.addEventListener('offline', reconcile);
+    window.addEventListener('pagehide', release);
+    window.addEventListener('pageshow', reconcile);
+    return () => {
+      stopped = true; clearInterval(interval); release();
+      document.removeEventListener('visibilitychange', reconcile);
+      window.removeEventListener('online', reconcile);
+      window.removeEventListener('offline', reconcile);
+      window.removeEventListener('pagehide', release);
+      window.removeEventListener('pageshow', reconcile);
+    };
+  }, [gameId, sessionToken, gameState?.status, current, authFetch, onUnauthorized]);
 
   useEffect(() => {
     setIsConnected(false);
@@ -158,7 +213,8 @@ export function useGameSync({ gameId, accountId, sessionToken, onUnauthorized, i
     Boolean(await action('crown', { action: choice, category, wagerCategory })), [action]);
   const resign = useCallback(async () => Boolean(await action('resign')), [action]);
 
-  return { gameState, isConnected, loading, error, targetDegrees: gameState?.lastSpin?.targetDegrees,
-    lastSpinSlice: gameState?.lastSpin?.slice, lastResult: gameState?.lastResult,
+  const visibleState = snapshotGeneration === generation && gameState?.id === gameId ? gameState : null;
+  return { gameState: visibleState, isConnected, presence, loading, error, targetDegrees: visibleState?.lastSpin?.targetDegrees,
+    lastSpinSlice: visibleState?.lastSpin?.slice, lastResult: visibleState?.lastResult,
     spin, answer, chooseCrown, resign, refresh };
 }

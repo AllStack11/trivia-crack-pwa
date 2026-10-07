@@ -102,7 +102,7 @@ describe('account identity and invitations', () => {
     const eve = await register(db, { username: 'Eve' });
     const { gameId } = await createGame(db, alice.account.id, bob.account.id);
     const env = { DB: asD1(db) };
-    for (const suffix of ['', '/events', '/spin', '/answer', '/crown', '/resign']) {
+    for (const suffix of ['', '/events', '/spin', '/answer', '/crown', '/resign', '/presence']) {
       const method = suffix === '' || suffix === '/events' ? 'GET' : 'POST';
       const path = '/api/games/' + gameId + suffix;
       expect((await app.request(path, { method }, env)).status).toBe(401);

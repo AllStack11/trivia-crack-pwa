@@ -15,7 +15,8 @@ import {
   Check,
   Plus,
   Globe,
-  Loader2
+  Loader2,
+  Flag
 } from 'lucide-react';
 import type {
   AccountSummary,
@@ -101,7 +102,7 @@ export default function Lobby({
   onChangeTab,
   highlightedInviteId,
 }: LobbyProps) {
-  const { showToast } = useToast();
+  const { showToast, showConfirm } = useToast();
 
   const [packs, setPacks] = useState<QuestionPackMeta[]>([]);
   const [selectedPackIds, setSelectedPackIds] = useState<string[]>(['default']);
@@ -391,6 +392,33 @@ export default function Lobby({
     }
   };
 
+  const resignMatch = (match: Match) => {
+    if (!account || loadingAction) return;
+    const token = account.token;
+    showConfirm({
+      title: 'Resign from match?',
+      message: `Your match against ${match.opponent.username} will end and your opponent will win.`,
+      confirmText: 'Resign',
+      isDestructive: true,
+      onConfirm: async () => {
+        if (activeToken.current !== token) return;
+        setLoadingAction(`resign:${match.gameId}`);
+        try {
+          await readResponse(await authFetch(`/api/games/${encodeURIComponent(match.gameId)}/resign`, { method: 'POST' }));
+          if (activeToken.current !== token) return;
+          showToast('You resigned from the match', 'info');
+          dashboardRequest.current?.controller.abort();
+          await dashboardRequest.current?.promise;
+          await refreshDashboard();
+        } catch (error) {
+          if (activeToken.current === token) showToast(error instanceof Error ? error.message : 'Could not resign. Try again.', 'error');
+        } finally {
+          if (activeToken.current === token) setLoadingAction(null);
+        }
+      },
+    });
+  };
+
   const sendInvitation = async (recipientId: string) => {
     setLoadingAction(`invite:${recipientId}`);
     try {
@@ -585,7 +613,7 @@ export default function Lobby({
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Swipeable Tab Container */}
           <div
-            className="flex-1 overflow-y-auto scroll-touch px-4 py-3 pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] overscroll-contain"
+            className="flex-1 overflow-y-auto scroll-touch px-4 py-3 pb-[calc(env(safe-area-inset-bottom,0px)+3.75rem)] overscroll-contain"
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
@@ -708,8 +736,8 @@ export default function Lobby({
                       const isCompleted = match.status === 'COMPLETED';
 
                       return (
+                        <div key={match.gameId} className="lobby-match-entry">
                         <div
-                          key={match.gameId}
                           role="button"
                           tabIndex={0}
                           aria-label={`Open match against ${match.opponent.username}`}
@@ -786,6 +814,11 @@ export default function Lobby({
                               )}
                             </div>
                           </div>
+                        </div>
+                        {!isCompleted && <button type="button" className="lobby-resign-button" aria-label={`Resign match against ${match.opponent.username}`} disabled={loadingAction !== null} onClick={() => resignMatch(match)}>
+                          {loadingAction === `resign:${match.gameId}` ? <Loader2 size={14} className="animate-spin" /> : <Flag size={14} />}
+                          {loadingAction === `resign:${match.gameId}` ? 'Resigning...' : 'Resign match'}
+                        </button>}
                         </div>
                       );
                     })}

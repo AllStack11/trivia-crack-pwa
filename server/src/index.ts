@@ -17,6 +17,7 @@ import {
 import type { CloudflareD1Database } from './db/database';
 import { getDatabase } from './db/database';
 import { queryBudget } from './db/queryBudget';
+import { updateMatchPresence } from './services/presenceService';
 import {
   answerQuestion,
   chooseCrown,
@@ -469,6 +470,19 @@ app.post('/api/questions/cache/clear', async (c) => {
 // -------------------------------------------------------------
 // SERVER-SENT EVENTS (SSE) FROM COMMITTED DATABASE STATE
 // -------------------------------------------------------------
+app.post('/api/games/:gameId/presence', async (c) => {
+  const db = await getDatabase(c.env);
+  const account = await getSession(db, sessionToken(c));
+  if (!account) return c.json({ error: 'Authentication required' }, 401);
+  const gameId = c.req.param('gameId');
+  if (!(await isGameParticipant(db, gameId, account.id))) return c.json({ error: 'Game not found' }, 404);
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.active !== 'boolean' || typeof body.connectionId !== 'string' || !/^[a-zA-Z0-9-]{16,64}$/.test(body.connectionId)) return c.json({ error: 'Invalid presence request' }, 400);
+  const presence = await updateMatchPresence(db, gameId, account.id, body.connectionId, body.active);
+  c.header('Cache-Control', 'no-store');
+  return presence ? c.json(presence) : c.json({ error: 'Game not found' }, 404);
+});
+
 app.get('/api/games/:gameId/events', async (c) => {
   const events = (callback: Parameters<typeof streamSSE>[1]) => {
     const response = streamSSE(c, callback);

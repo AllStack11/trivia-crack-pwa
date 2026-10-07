@@ -5,7 +5,7 @@ import type {
   QuestionResult,
   WheelSlice,
 } from '../../shared/src/index';
-import { CATEGORIES, SPIN_RESULT_HOLD_MS } from '../../shared/src/index';
+import { SPIN_RESULT_HOLD_MS } from '../../shared/src/index';
 
 import { SIDEKICK_MS, createDialogueSelector, crownReaction } from './components/characters/reactions';
 import CharacterReaction from './components/characters/CharacterReaction';
@@ -17,6 +17,7 @@ import TurnNotification from './components/TurnNotification';
 import PackCreator from './components/PackCreator';
 import QuestionView from './components/QuestionView';
 import Wheel from './components/Wheel';
+import SpinArena from './components/SpinArena';
 import { useGameSync } from './hooks/useGameSync';
 import type { AccountSession } from './components/Lobby';
 import type { LobbyTab } from './components/navigation/BottomNav';
@@ -70,12 +71,12 @@ const markSpinSeen = (id: string) => {
 };
 
 function AppContent() {
-  const { showToast, showConfirm } = useToast();
+  const { showToast } = useToast();
   const reducedMotion = useReducedMotion();
   const pwa = usePWA();
 
-  const [view, setView] = useState<AppView>('LOBBY');
-  const [activeGameId, setActiveGameId] = useState<string | null>(null);
+  const [view, setView] = useState<AppView>(() => window.location.pathname.startsWith('/game/') ? 'GAME' : 'LOBBY');
+  const [activeGameId, setActiveGameId] = useState<string | null>(() => window.location.pathname.startsWith('/game/') ? decodeURIComponent(window.location.pathname.slice(6)) || null : null);
   const [lobbyTab, setLobbyTab] = useState<LobbyTab>('matches');
   const [highlightedInviteId, setHighlightedInviteId] = useState<string | null>(null);
   const [account, setAccount] = useState<AccountSession | null>(null);
@@ -94,7 +95,6 @@ function AppContent() {
         setActiveGameId(gameId);
         setView('GAME');
         setIsWheelSpinning(false);
-        setLandedCategoryName(null);
         reviewTimer.cancel();
         lastReviewedResultKeyRef.current = null;
         setActiveReviewResult(null);
@@ -132,7 +132,6 @@ function AppContent() {
   // Wheel animation control state to prevent skipping the spinner
   const [isWheelSpinning, setIsWheelSpinning] = useState<boolean>(false);
   const [wheelTargetDegrees, setWheelTargetDegrees] = useState<number | undefined>(undefined);
-  const [landedCategoryName, setLandedCategoryName] = useState<string | null>(null);
   const spinPendingRef = useRef(false);
   const [spinPending, setSpinPending] = useState(false);
   const spinHoldTimerRef = useRef<number | undefined>(undefined);
@@ -145,6 +144,7 @@ function AppContent() {
   } | null>(null);
   const [reviewTimer] = useState(createReviewTimer);
   const lastReviewedResultKeyRef = useRef<string | null>(null);
+  const presentationBaselineRef = useRef<string | null>(null);
   const [selectDialogue] = useState(createDialogueSelector);
   const [sidekick, setSidekick] = useState<(NonNullable<ReturnType<typeof crownReaction>> & { quote: string }) | null>(null);
   const sidekickTimerRef = useRef<number | undefined>(undefined);
@@ -156,6 +156,7 @@ function AppContent() {
   useEffect(() => {
     let mounted = true;
     const restore = async () => {
+      let authenticated = false;
       setRestoreError(null);
       try {
         const raw = localStorage.getItem('trivia_clash_account');
@@ -174,6 +175,7 @@ function AppContent() {
               };
               if (mounted) {
                 setAccount({ ...data.account, token: saved.token });
+                authenticated = true;
                 applyRoute(window.location.pathname, window.location.search);
               }
             } else if (response.status === 401) {
@@ -186,7 +188,10 @@ function AppContent() {
       } catch {
         if (mounted) setRestoreError('Could not restore your profile. Your sign-in is saved; reconnect to retry.');
       } finally {
-        if (mounted) setAuthLoading(false);
+        if (mounted) {
+          if (!authenticated) setView('LOBBY');
+          setAuthLoading(false);
+        }
       }
     };
     void restore();
@@ -278,13 +283,13 @@ function AppContent() {
   const {
     gameState,
     isConnected,
+    presence,
     loading: gameLoading,
     error: gameError,
     targetDegrees,
     spin,
     answer,
     chooseCrown,
-    resign,
   } = useGameSync({
     gameId: activeGameId,
     accountId: account?.id ?? null,
@@ -292,31 +297,15 @@ function AppContent() {
     onUnauthorized: handleUnauthorized,
   });
 
-  // When spectator (Player 2) receives opponent's spin via SSE, trigger wheel animation
-  useEffect(() => {
-    if (!gameState) return;
-
-    if (
-      gameState.lastSpin &&
-      gameState.currentTurnPlayerId !== account?.id &&
-      !hasSeenSpin(gameState.lastSpin.id)
-    ) {
-      markSpinSeen(gameState.lastSpin.id);
-      setWheelTargetDegrees(gameState.lastSpin.targetDegrees);
-      setIsWheelSpinning(true);
-      setLandedCategoryName(null);
-    }
-  }, [gameState, account?.id]);
-
   useEffect(() => {
     reviewGenerationRef.current++;
     lastReviewedResultKeyRef.current = null;
+    presentationBaselineRef.current = null;
     previousReviewRef.current = null;
     setSidekick(null);
     clearTimeout(sidekickTimerRef.current);
     setIsWheelSpinning(false);
     setWheelTargetDegrees(undefined);
-    setLandedCategoryName(null);
     setActiveReviewResult(null);
     return () => {
       reviewTimer.cancel();
@@ -324,6 +313,23 @@ function AppContent() {
       clearTimeout(sidekickTimerRef.current);
     };
   }, [activeGameId, account?.id, view]);
+
+  // Restoration establishes a baseline; persisted events are not new animations.
+  useEffect(() => {
+    if (view !== 'GAME' || !gameState || gameState.id !== activeGameId) return;
+    if (presentationBaselineRef.current !== gameState.id) {
+      presentationBaselineRef.current = gameState.id;
+      if (gameState.lastSpin) markSpinSeen(gameState.lastSpin.id);
+      const result = gameState.lastResult;
+      if (result?.question) lastReviewedResultKeyRef.current = `${result.question.id}_${result.nextPlayerId}_${result.wasCorrect}_${result.correctIndex}`;
+      return;
+    }
+    if (gameState.lastSpin && gameState.currentTurnPlayerId !== account?.id && !hasSeenSpin(gameState.lastSpin.id)) {
+      markSpinSeen(gameState.lastSpin.id);
+      setWheelTargetDegrees(gameState.lastSpin.targetDegrees);
+      setIsWheelSpinning(true);
+    }
+  }, [gameState, activeGameId, account?.id, view]);
 
   useEffect(() => {
     if (gameState?.mode === 'QUESTION') {
@@ -400,7 +406,6 @@ function AppContent() {
     setActiveGameId(gameId);
     setView('GAME');
     setIsWheelSpinning(false);
-    setLandedCategoryName(null);
     reviewTimer.cancel();
     lastReviewedResultKeyRef.current = null;
     setActiveReviewResult(null);
@@ -415,7 +420,6 @@ function AppContent() {
   const handleNavigateToLobby = () => {
     setActiveGameId(null);
     setIsWheelSpinning(false);
-    setLandedCategoryName(null);
     reviewTimer.cancel();
     lastReviewedResultKeyRef.current = null;
     setActiveReviewResult(null);
@@ -428,7 +432,6 @@ function AppContent() {
     if (isWheelSpinning || spinPendingRef.current) return;
     spinPendingRef.current = true;
     setSpinPending(true);
-    setLandedCategoryName(null);
     reviewTimer.cancel();
     setActiveReviewResult(null);
     try {
@@ -446,14 +449,10 @@ function AppContent() {
 
   // Wheel animation completes
   const handleSpinComplete = useCallback((landedSlice: WheelSlice) => {
-    const info = landedSlice === 'CROWN' ? null : CATEGORIES[landedSlice];
-    const catName = info ? `${info.characterName} (${info.name})` : 'Golden Crown Battle!';
-    setLandedCategoryName(catName);
     playAudioCue(landedSlice === 'CROWN' ? 'crownLanding' : 'landing');
 
     spinHoldTimerRef.current = window.setTimeout(() => {
       setIsWheelSpinning(false);
-      setLandedCategoryName(null);
     }, SPIN_RESULT_HOLD_MS);
   }, []);
 
@@ -502,20 +501,6 @@ function AppContent() {
     }
   };
 
-  const handleForfeit = () => {
-    showConfirm({
-      title: 'Forfeit Match?',
-      message:
-        'Are you sure you want to forfeit this duel? Your opponent will be awarded victory.',
-      confirmText: 'Forfeit',
-      isDestructive: true,
-      onConfirm: () => {
-        void resign();
-        showToast('You forfeited the match', 'info');
-      },
-    });
-  };
-
   const isMyTurn = Boolean(
     gameState && account && gameState.currentTurnPlayerId === account.id
   );
@@ -549,9 +534,9 @@ function AppContent() {
     : '';
 
   return (
-    <div className="trivia-app h-[100dvh] max-h-[100dvh] w-full text-slate-100 flex flex-col justify-between overflow-hidden relative select-none">
+    <div className={`trivia-app ${view === 'GAME' ? 'mobile-match' : ''} h-[100dvh] max-h-[100dvh] w-full text-slate-100 flex flex-col justify-between overflow-hidden relative select-none`}>
       {/* Dynamic Cosmic Animated Background with Reactive Category Lighting */}
-      <AnimatedBackground activeCategory={activeCategory} />
+      {view !== 'GAME' && <AnimatedBackground activeCategory={activeCategory} scene="lobby" />}
 
       {account && !authLoading && view !== 'GAME' && (
         <TurnNotification key={account.token} account={account} onOpenGame={handleOpenGame} onUnauthorized={handleUnauthorized} />
@@ -605,7 +590,8 @@ function AppContent() {
 
       {/* Main Viewport Router with Fluid Directional Transitions */}
       <div className="flex-1 flex flex-col w-full h-full overflow-hidden relative">
-        <AnimatePresence mode="wait">
+        {view === 'GAME' && <AnimatedBackground activeCategory={activeCategory} scene="match" />}
+        <AnimatePresence key={view} initial={false} mode="wait">
           {view === 'PACK_CREATOR' && (
             <motion.main
               key="pack_creator"
@@ -667,31 +653,8 @@ function AppContent() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 40 }}
               transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-              className="flex-1 flex flex-col max-w-md mx-auto w-full h-full overflow-y-auto justify-between z-20 px-3 py-1"
+              className={`match-page ${shouldShowWheel ? 'match-page-spin' : ''} flex-1 flex flex-col mx-auto w-full h-full overflow-y-auto z-20 px-3 py-1`}
             >
-              {/* Connection Status indicator */}
-              <div className="flex items-center justify-between px-2 py-1">
-                <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      gameState.status === 'COMPLETED' ? 'bg-slate-400' : isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
-                    }`}
-                  />
-                  <span className="text-[11px] font-bold">
-                    {gameState.status === 'COMPLETED' ? 'Match complete' : isConnected ? 'Realtime Match' : 'Reconnecting...'}
-                  </span>
-                </div>
-                {gameState.status === 'IN_PROGRESS' && (
-                  <button
-                    type="button"
-                    onClick={handleForfeit}
-                    className="text-[11px] font-bold text-slate-400 hover:text-rose-400 transition-colors"
-                  >
-                    Forfeit Match 🏳️
-                  </button>
-                )}
-              </div>
-
               {gameError && (
                 <div
                   role="alert"
@@ -702,37 +665,29 @@ function AppContent() {
               )}
 
               {/* Players Crown Status Bar */}
-              <CrownBar state={gameState} myPlayerId={account.id} />
+              <CrownBar state={gameState} myPlayerId={account.id} isConnected={isConnected && pwa.isOnline} presence={presence} />
 
               {/* Center Stage Area */}
-              <div className="flex-1 min-h-0 flex flex-col items-center py-1 overflow-y-auto w-full">
+              <div className={`${shouldShowWheel ? 'match-spin-content flex-1 min-h-0 overflow-hidden' : 'flex-1 min-h-0 overflow-y-auto'} flex flex-col items-center py-1 w-full`}>
                 {/* STAGE: WHEEL */}
                 {shouldShowWheel && (
-                  <div className="w-full flex flex-col items-center justify-center relative">
+                  <SpinArena state={gameState} playerId={account.id} spinning={isWheelSpinning}>
                     <Wheel
                       canSpin={isMyTurn && !isWheelSpinning && !spinPending}
                       isSpinning={isWheelSpinning}
+                      pending={spinPending}
                       targetDegrees={wheelTargetDegrees || targetDegrees}
                       onSpinStart={handleSpinStart}
                       onSpinComplete={handleSpinComplete}
                     />
 
-                    {landedCategoryName && (
-                      <motion.div
-                        initial={{ scale: 0, y: 10 }}
-                        animate={{ scale: 1, y: 0 }}
-                        className="absolute bottom-2 bg-gradient-to-r from-amber-400 to-yellow-400 text-slate-950 px-4 py-1.5 rounded-full font-black text-xs shadow-2xl border border-yellow-200"
-                      >
-                        🎯 {landedCategoryName}
-                      </motion.div>
-                    )}
-                  </div>
+                  </SpinArena>
                 )}
 
                 {/* STAGE: QUESTION */}
                 {shouldShowQuestion &&
                   (activeReviewResult || gameState.activeQuestion) && (
-                    <div className="w-full flex flex-col">
+                    <div className="w-full flex-1 min-h-0 flex flex-col">
                       <QuestionView
                         key={activeReviewResult?.question.id ?? gameState.activeQuestion?.id}
                         question={
@@ -849,14 +804,14 @@ function AppContent() {
                 )}
               </div>
               {sidekick && !activeReviewResult && gameState.mode !== 'QUESTION' && (
-                <div className="shrink-0 pt-2" style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
+                <div className="match-sidekick-overlay" style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
                   <CharacterReaction category={sidekick.category} quote={sidekick.quote} onClose={() => { clearTimeout(sidekickTimerRef.current); setSidekick(null); }} />
                 </div>
               )}
             </motion.main>
           )}
 
-          {view === 'GAME' && account && !gameState && (
+          {view === 'GAME' && (!account || !gameState) && (
             <motion.main
               key="game_loading"
               initial={{ opacity: 0 }}
@@ -864,7 +819,7 @@ function AppContent() {
               exit={{ opacity: 0 }}
               className="flex-1 flex items-center justify-center text-sm text-slate-400 z-20"
             >
-              {gameError || (gameLoading ? 'Loading match…' : 'Match unavailable')}
+              {authLoading ? 'Restoring your profile…' : gameError || (gameLoading ? 'Loading match…' : 'Match unavailable')}
             </motion.main>
           )}
         </AnimatePresence>

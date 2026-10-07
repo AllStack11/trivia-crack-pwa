@@ -1,16 +1,14 @@
 import { WHEEL_SPIN_DURATION_MS } from '../../../shared/src/index';
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Hand } from 'lucide-react';
-import type { Category, WheelSlice } from '../../../shared/src/index';
+import { motion, useReducedMotion } from 'motion/react';
+import { Zap } from 'lucide-react';
+import type { WheelSlice } from '../../../shared/src/index';
 import { playButtonPop, playWheelTick, triggerHaptic, startWheelMotion } from '../utils/audio';
 import { requestWakeLock, releaseWakeLock } from '../hooks/usePWA';
-import CategoryCharacter from './characters/CategoryCharacter';
-import { CHARACTER_PROFILES } from './characters/characterData';
-import Button from './ui/Button';
 interface WheelProps {
   canSpin: boolean;
   isSpinning: boolean;
+  pending?: boolean;
   targetDegrees?: number;
   onSpinStart: () => void;
   onSpinComplete: (slice: WheelSlice) => void;
@@ -18,31 +16,32 @@ interface WheelProps {
 
 interface SliceConfig {
   slice: WheelSlice;
-  label: string;
-  sublabel: string;
-  icon: string;
   color: string;
   accentColor: string;
 }
 
 const SLICE_CONFIGS: SliceConfig[] = [
-  { slice: 'GEOGRAPHY', label: 'GEOGRAPHY', sublabel: 'Tina', icon: '🌍', color: '#3B82F6', accentColor: '#1D4ED8' },
-  { slice: 'SCIENCE', label: 'SCIENCE', sublabel: 'Albert', icon: '🔬', color: '#10B981', accentColor: '#047857' },
-  { slice: 'HISTORY', label: 'HISTORY', sublabel: 'Hector', icon: '⏳', color: '#EAB308', accentColor: '#A16207' },
-  { slice: 'SPORTS', label: 'SPORTS', sublabel: 'Bonzo', icon: '🏆', color: '#F97316', accentColor: '#C2410C' },
-  { slice: 'ART', label: 'ART', sublabel: 'Arthur', icon: '🎨', color: '#EF4444', accentColor: '#B91C1C' },
-  { slice: 'ENTERTAINMENT', label: 'ENTERTAINMENT', sublabel: 'Pop', icon: '🎬', color: '#EC4899', accentColor: '#BE185D' },
-  { slice: 'CROWN', label: 'CROWN', sublabel: 'Prize', icon: '👑', color: '#F59E0B', accentColor: '#B45309' }
+  { slice: 'GEOGRAPHY', color: '#3B82F6', accentColor: '#1D4ED8' },
+  { slice: 'SCIENCE', color: '#10B981', accentColor: '#047857' },
+  { slice: 'HISTORY', color: '#EAB308', accentColor: '#A16207' },
+  { slice: 'SPORTS', color: '#F97316', accentColor: '#C2410C' },
+  { slice: 'ART', color: '#EF4444', accentColor: '#B91C1C' },
+  { slice: 'ENTERTAINMENT', color: '#EC4899', accentColor: '#BE185D' },
+  { slice: 'CROWN', color: '#F59E0B', accentColor: '#B45309' }
 ];
 
 export default function Wheel({
-  canSpin,
+  canSpin: allowedToSpin,
   isSpinning,
+  pending = false,
   targetDegrees,
   onSpinStart,
   onSpinComplete
 }: WheelProps) {
-  const mascotImages = useRef<Partial<Record<Category, HTMLImageElement>>>({});
+  const reducedMotion = useReducedMotion();
+  const [mediaReady, setMediaReady] = useState(false);
+  const canSpin = allowedToSpin && mediaReady;
+  const categoryImages = useRef<Partial<Record<WheelSlice, HTMLImageElement>>>({});
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const currentRotationRef = useRef<number>(0);
@@ -81,7 +80,7 @@ export default function Wheel({
     ctx.save();
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius + 10, 0, 2 * Math.PI);
-    ctx.fillStyle = '#fffdf2';
+    ctx.fillStyle = '#173e55';
     ctx.shadowColor = 'rgba(35, 86, 83, 0.25)';
     ctx.shadowBlur = 24;
     ctx.shadowOffsetY = 6;
@@ -93,9 +92,9 @@ export default function Wheel({
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius + 6, 0, 2 * Math.PI);
     const rimGrad = ctx.createLinearGradient(0, 0, width, height);
-    rimGrad.addColorStop(0, '#FEF08A');
-    rimGrad.addColorStop(0.3, '#EAB308');
-    rimGrad.addColorStop(0.7, '#CA8A04');
+    rimGrad.addColorStop(0, '#fff8d1');
+    rimGrad.addColorStop(0.3, '#ffc76a');
+    rimGrad.addColorStop(0.7, '#c48428');
     rimGrad.addColorStop(1, '#78350F');
     ctx.strokeStyle = rimGrad;
     ctx.lineWidth = Math.max(7, Math.round(radius * 0.06));
@@ -114,10 +113,7 @@ export default function Wheel({
     ctx.translate(centerX, centerY);
     ctx.rotate(rotationAngleRad);
 
-    const iconSize = Math.max(14, Math.round(radius * 0.12));
-    const labelSize = Math.max(8, Math.round(radius * 0.058));
-    const iconPos = radius * 0.82;
-    const labelCenterPos = radius * 0.46;
+    const iconPos = radius * .66;
 
     for (let i = 0; i < sliceCount; i++) {
       const config = SLICE_CONFIGS[i];
@@ -135,38 +131,36 @@ export default function Wheel({
       wedgeGrad.addColorStop(1, config.accentColor);
       ctx.fillStyle = wedgeGrad;
       ctx.fill();
+      // A polished inset edge and outer highlight give each segment depth.
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * .95, startAngle + .025, endAngle - .025);
+      ctx.strokeStyle = 'rgba(255,255,255,.45)';
+      ctx.lineWidth = radius * .026;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * .61, startAngle + .025, endAngle - .025);
+      ctx.strokeStyle = 'rgba(0,0,0,.10)';
+      ctx.lineWidth = radius * .28;
+      ctx.stroke();
 
       // Crisp slice divider with specular shine
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
       ctx.lineWidth = 2.5;
       ctx.stroke();
 
-      // Slice Content (Text & Icon)
+      // Large, text-free category artwork. It faces outward with its segment.
       ctx.save();
       const midAngle = startAngle + sliceAngle / 2;
-      ctx.rotate(midAngle);
-      ctx.textBaseline = 'middle';
-
-      // Draw Icon near the rim
-      ctx.textAlign = 'center';
-      ctx.font = `${iconSize}px sans-serif`;
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-      ctx.shadowBlur = 4;
-      const mascot = config.slice !== 'CROWN' ? mascotImages.current[config.slice] : undefined;
-      if (mascot?.complete && mascot.naturalWidth) {
-        const artSize = radius * .40;
-        ctx.drawImage(mascot, iconPos - artSize / 2 - 9, -artSize / 2, artSize, artSize);
-      } else {
-        ctx.fillText(config.icon, iconPos, 0);
+      ctx.translate(Math.cos(midAngle) * iconPos, Math.sin(midAngle) * iconPos);
+      ctx.rotate(midAngle + Math.PI / 2);
+      const icon = categoryImages.current[config.slice];
+      if (icon?.complete && icon.naturalWidth) {
+        const artSize = radius * .53;
+        ctx.shadowColor = 'rgba(0,0,0,.28)';
+        ctx.shadowBlur = radius * .025;
+        ctx.shadowOffsetY = radius * .015;
+        ctx.drawImage(icon, -artSize / 2, -artSize / 2, artSize, artSize);
       }
-
-      // Draw Label centered in clear wedge band
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = `900 ${labelSize}px system-ui, -apple-system, BlinkMacSystemFont, sans-serif`;
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-      ctx.shadowBlur = 4;
-      ctx.fillText(config.label, labelCenterPos, 0);
-
       ctx.restore();
     }
 
@@ -197,7 +191,6 @@ export default function Wheel({
     // 5. Center Hub
     const hubOuterRadius = Math.round(radius * 0.24);
     const hubInnerRadius = Math.round(radius * 0.19);
-    const spinFontSize = Math.max(10, Math.round(radius * 0.095));
 
     // Outer Hub Gold Ring
     ctx.save();
@@ -231,14 +224,21 @@ export default function Wheel({
     ctx.shadowBlur = canSpin && !isSpinning ? 12 : 4;
     ctx.fill();
 
-    // "SPIN" text
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = canSpin && !isSpinning ? '#FFFFFF' : '#94A3B8';
-    ctx.font = `900 ${spinFontSize}px system-ui, -apple-system, sans-serif`;
-    ctx.shadowColor = 'rgba(35, 86, 83, 0.25)';
-    ctx.shadowBlur = 4;
-    ctx.fillText('SPIN', centerX, centerY);
+    // An embossed lightning emblem keeps the hub free of lettering too.
+    const boltSize = hubInnerRadius * .65;
+    ctx.beginPath();
+    ctx.moveTo(centerX + boltSize * .2, centerY - boltSize);
+    ctx.lineTo(centerX - boltSize * .65, centerY + boltSize * .15);
+    ctx.lineTo(centerX - boltSize * .05, centerY + boltSize * .15);
+    ctx.lineTo(centerX - boltSize * .2, centerY + boltSize);
+    ctx.lineTo(centerX + boltSize * .65, centerY - boltSize * .15);
+    ctx.lineTo(centerX + boltSize * .05, centerY - boltSize * .15);
+    ctx.closePath();
+    ctx.fillStyle = canSpin && !isSpinning ? '#fff5bc' : '#a6bdc8';
+    ctx.shadowColor = '#442a1d';
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 2;
+    ctx.fill();
     ctx.restore();
   }, [canSpin, isSpinning]);
 
@@ -288,7 +288,7 @@ export default function Wheel({
 
       // Decelerating quartic ease-out curve
       const easeOut = 1 - Math.pow(1 - progress, 4);
-      const currentAngle = startAngle + deltaAngle * easeOut;
+      const currentAngle = reducedMotion ? targetRad : startAngle + deltaAngle * easeOut;
       currentRotationRef.current = currentAngle;
 
       // Track flapper peg hits
@@ -311,7 +311,7 @@ export default function Wheel({
       } else {
         stopMotion();
         // Spin finished
-        const normalizedDeg = (360 - ((currentAngle * 180) / Math.PI) % 360) % 360;
+        const normalizedDeg = ((270 - (currentAngle * 180) / Math.PI) % 360 + 360) % 360;
         const sliceArc = 360 / SLICE_CONFIGS.length;
         const landedIndex = Math.floor(normalizedDeg / sliceArc) % SLICE_CONFIGS.length;
         const resultSlice = SLICE_CONFIGS[landedIndex].slice;
@@ -330,19 +330,28 @@ export default function Wheel({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isSpinning, targetDegrees, drawWheel, onSpinComplete]);
+  }, [isSpinning, targetDegrees, drawWheel, onSpinComplete, reducedMotion]);
+
+  const drawWheelRef = useRef(drawWheel);
+  drawWheelRef.current = drawWheel;
 
   useEffect(() => {
     let active = true;
+    let settled = 0;
+    const complete = () => {
+      if (!active || ++settled !== SLICE_CONFIGS.length) return;
+      drawWheelRef.current(currentRotationRef.current);
+      setMediaReady(true);
+    };
     for (const config of SLICE_CONFIGS) {
-      if (config.slice === 'CROWN') continue;
       const image = new Image();
-      mascotImages.current[config.slice] = image;
-      image.onload = () => { if (active) drawWheel(currentRotationRef.current); };
-      image.src = `/art/${config.slice.toLowerCase()}.webp`;
+      categoryImages.current[config.slice] = image;
+      image.onload = complete;
+      image.onerror = complete;
+      image.src = `/art/wheel-icons/${config.slice.toLowerCase()}.webp`;
     }
     return () => { active = false; };
-  }, [drawWheel]);
+  }, []);
 
   const handleCenterClick = useCallback(() => {
     if (!canSpin || isSpinning) return;
@@ -399,6 +408,8 @@ export default function Wheel({
     totalDragDisplacementRef.current += Math.abs(delta);
     const newRotation = dragBaseRotationRef.current + delta;
     currentRotationRef.current = newRotation;
+    dragStartAngleRef.current = currentAngle;
+    dragBaseRotationRef.current = newRotation;
 
     // Record points for velocity estimation (keep last 5)
     const now = performance.now();
@@ -432,7 +443,7 @@ export default function Wheel({
       // Pointer capture release
     }
 
-    if (!canSpin || isSpinning) return;
+    if (!canSpin || isSpinning || e.type === 'pointercancel') return;
 
     // Calculate release velocity
     const pts = dragPointsRef.current;
@@ -456,20 +467,25 @@ export default function Wheel({
       playButtonPop();
       triggerHaptic('heavy');
       onSpinStart();
-    } else if (totalDisplacement < 0.15) {
-      // It was a tap / click on the wheel
-      handleCenterClick();
     }
   };
 
-  const landedProfile = landedSlice && landedSlice !== 'CROWN'
-    ? CHARACTER_PROFILES[landedSlice as Category]
-    : null;
-
   return (
-    <div className="relative flex flex-col items-center justify-center p-2 select-none touch-manipulation w-full">
+    <div className="premium-wheel relative flex flex-col items-center justify-center select-none touch-manipulation w-full">
+      {/* Main Wheel Canvas with ambient neon halo */}
+      {/* Main Wheel Canvas with gesture physics & ambient neon halo */}
+      <motion.div
+        ref={containerRef}
+        whileHover={canSpin && !isSpinning ? { scale: 1.02 } : undefined}
+        whileTap={canSpin && !isSpinning ? { scale: 0.98 } : undefined}
+        className="wheel-disc relative cursor-grab active:cursor-grabbing flex items-center justify-center touch-none select-none"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUpOrCancel}
+        onPointerCancel={handlePointerUpOrCancel}
+      >
       <div
-        className="absolute top-1 z-30 flex flex-col items-center transition-transform duration-75 origin-top pointer-events-none"
+        className="wheel-flapper"
         style={{ transform: `rotate(${flapperDeflection}deg)` }}
       >
         <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-yellow-300 via-amber-400 to-yellow-500 border-2 border-yellow-200 shadow-lg flex items-center justify-center">
@@ -478,20 +494,8 @@ export default function Wheel({
         <div className="w-0 h-0 border-l-[9px] border-l-transparent border-r-[9px] border-r-transparent border-t-[20px] border-t-red-600 drop-shadow-lg -mt-1" />
       </div>
 
-      {/* Main Wheel Canvas with ambient neon halo */}
-      {/* Main Wheel Canvas with gesture physics & ambient neon halo */}
-      <motion.div
-        ref={containerRef}
-        whileHover={canSpin && !isSpinning ? { scale: 1.02 } : undefined}
-        whileTap={canSpin && !isSpinning ? { scale: 0.98 } : undefined}
-        className="relative cursor-grab active:cursor-grabbing w-[270px] h-[270px] xs:w-[295px] xs:h-[295px] sm:w-[335px] sm:h-[335px] max-w-[85vw] max-h-[50vh] flex items-center justify-center touch-none select-none"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUpOrCancel}
-        onPointerCancel={handlePointerUpOrCancel}
-      >
         {/* Pulsing golden aura when it's your turn to spin */}
-        {canSpin && !isSpinning && (
+        {canSpin && !isSpinning && !reducedMotion && (
           <motion.div
             animate={{
               scale: isGestureActive ? 1.08 : [1, 1.06, 1],
@@ -502,101 +506,19 @@ export default function Wheel({
           />
         )}
 
-        {/* Interactive Flick/Tap floating hint pill */}
-        {canSpin && !isSpinning && !isGestureActive && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="absolute -top-3 z-30 pointer-events-none"
-          >
-            <div className="flex items-center gap-1.5 py-1 px-3 rounded-full bg-slate-950/90 border border-amber-400/50 shadow-lg text-[11px] font-bold text-amber-300">
-              <Hand className="w-3.5 h-3.5 animate-bounce text-amber-400" />
-              <span>Flick or Tap to Spin</span>
-              <Sparkles className="w-3 h-3 text-amber-400" />
-            </div>
-          </motion.div>
-        )}
-
         <canvas
           ref={canvasRef}
+          role="img"
+          aria-label="Trivia wheel with geography, science, history, sports, art, entertainment, and crown icons"
           className="w-full h-full drop-shadow-2xl rounded-full relative z-10 touch-none pointer-events-none"
+          style={{ visibility: mediaReady ? 'visible' : 'hidden' }}
         />
+        <button type="button" className={`wheel-hub-button ${canSpin && !isSpinning ? 'wheel-hub-ready' : ''}`} aria-label={pending ? 'Starting spin' : isSpinning ? 'Wheel spinning' : 'Spin the wheel'} disabled={!canSpin || isSpinning} onPointerDown={event => event.stopPropagation()} onClick={handleCenterClick}>
+          <Zap aria-hidden="true" />
+        </button>
       </motion.div>
 
-      {/* Action / Status Controls */}
-      <div className="mt-3 text-center w-full max-w-xs">
-        {isSpinning ? (
-          <div className="py-2.5 px-4 rounded-2xl bg-amber-500/10 border border-amber-400/30 flex items-center justify-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-            <span className="text-xs font-black text-amber-300 tracking-wide uppercase">
-              Wheel Spinning…
-            </span>
-          </div>
-        ) : canSpin ? (
-          <Button
-            variant="primary"
-            size="lg"
-            glow
-            sound={false}
-            onClick={handleCenterClick}
-            className="w-full shadow-amber-500/30"
-          >
-            <span>🎲 SPIN THE WHEEL!</span>
-          </Button>
-        ) : (
-          <div className="py-2 px-3 rounded-xl bg-slate-900/60 border border-slate-800 text-[11px] font-bold text-slate-400">
-            ⏳ Waiting for opponent's turn…
-          </div>
-        )}
-      </div>
-
-      {/* Character Landing Celebration Card */}
-      <AnimatePresence>
-        {landedSlice && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 10 }}
-            transition={{ type: 'spring', stiffness: 450, damping: 25 }}
-            className="mt-3 w-full max-w-sm p-3.5 rounded-2xl bg-slate-900/95 border border-white/15 backdrop-blur-xl shadow-2xl flex items-center gap-3 relative z-30"
-          >
-            {landedSlice === 'CROWN' ? (
-              <>
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-400 to-yellow-500 flex items-center justify-center text-2xl shadow-lg border border-yellow-200 shrink-0">
-                  👑
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-black text-amber-400 uppercase tracking-wider">Landed on Crown!</div>
-                  <div className="text-sm font-extrabold text-white">Crown Challenge Unlocked!</div>
-                  <p className="text-[10px] text-slate-300">Choose a character to duel or steal.</p>
-                </div>
-              </>
-            ) : landedProfile ? (
-              <>
-                <CategoryCharacter
-                  category={landedSlice}
-                  size="md"
-                  mood="celebrating"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-black text-white">{landedProfile.name}</span>
-                    <span
-                      className="text-[9px] font-bold px-1.5 py-0.2 rounded-full text-white"
-                      style={{ backgroundColor: landedProfile.color }}
-                    >
-                      {landedSlice}
-                    </span>
-                  </div>
-                  <div className="text-[11px] font-bold text-amber-300 italic mt-0.5 truncate">
-                    "{landedProfile.quotes.greeting}"
-                  </div>
-                </div>
-              </>
-            ) : null}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <p className="wheel-instruction" role="status">{!mediaReady ? 'Preparing wheel…' : isSpinning ? 'Let the wheel cook...' : pending ? 'Starting your spin...' : landedSlice ? `Landed on ${landedSlice.toLowerCase()}` : canSpin ? 'Tap the glowing center or flick to spin' : 'Waiting for your opponent'}</p>
     </div>
   );
 }

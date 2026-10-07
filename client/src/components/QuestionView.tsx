@@ -199,11 +199,12 @@ export default function QuestionView({
   const optionLetters = ['A', 'B', 'C', 'D'];
 
   return (
-    <div className="flex flex-col w-full max-w-md mx-auto relative z-20 select-none pb-4">
-      <div className="flex flex-col w-full rounded-3xl bg-slate-900/95 border border-slate-700/80 shadow-2xl overflow-hidden backdrop-blur-xl">
+    <div className="question-surface flex flex-col w-full max-w-md mx-auto relative z-20 select-none pb-4">
+{lastResult && <div className="question-reaction-overlay"><CharacterReaction key={question.id} category={question.category} quote={quote} result={lastResult} onContinue={onDismissResult ? () => { playButtonPop(); onDismissResult(); } : undefined} /></div>}
+      <div className="question-card flex flex-col w-full rounded-3xl bg-slate-900/95 border border-slate-700/80 shadow-2xl overflow-hidden backdrop-blur-xl">
         {/* Category Header Banner with Mascot & Timer */}
         <div
-          className="question-host relative px-4 py-3.5 text-white flex items-center justify-between shadow-md"
+          className={`question-host relative px-4 py-3.5 text-white flex items-center justify-between shadow-md `}
           style={{
             background: `linear-gradient(135deg, ${categoryInfo.color}EE, ${categoryInfo.accentColor}EE)`,
           }}
@@ -247,14 +248,12 @@ export default function QuestionView({
           </div>
 
           {/* Live Countdown Clock */}
-          {!lastResult && (
-            <div className="flex items-center gap-1.5 bg-black/45 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 shadow-inner">
+          <div className="flex items-center gap-1.5 bg-black/45 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 shadow-inner">
               <Clock className={`w-3.5 h-3.5 ${timerTextColor}`} />
               <span className={`font-mono font-black text-xs sm:text-sm ${timerTextColor}`}>
-                {secondsRemaining}s
+                {lastResult ? <CheckCircle size={16} aria-label="Question answered" /> : `${secondsRemaining}s`}
               </span>
             </div>
-          )}
         </div>
 
         {/* Dynamic Countdown Bar */}
@@ -267,8 +266,7 @@ export default function QuestionView({
         </div>
 
         {/* Question Content */}
-        <div className="p-4 sm:p-5 flex-1 flex flex-col justify-center">
-          {lastResult && <CharacterReaction key={question.id} category={question.category} quote={quote} result={lastResult} onContinue={onDismissResult ? () => { playButtonPop(); onDismissResult(); } : undefined} />}
+        <div className="question-content p-4 sm:p-5 flex-1 flex flex-col justify-center">
           {/* Optional Question Image */}
           {question.imageUrl && !imageError && (
             <div className="relative mb-3 flex flex-col items-center">
@@ -298,12 +296,12 @@ export default function QuestionView({
           )}
 
           {/* Question Text */}
-          <h2 className="text-base sm:text-lg font-black text-center text-white leading-snug mb-5 px-1">
+          <h2 className="question-prompt text-base sm:text-lg font-black text-center text-white leading-snug mb-5 px-1">
             {question.question}
           </h2>
 
           {/* 4 Interactive Option Cards */}
-          <div className="grid grid-cols-1 gap-2.5 w-full">
+          <div className="question-options grid grid-cols-1 gap-2.5 w-full">
             {question.options.map((option: string, idx: number) => {
               const letter = optionLetters[idx];
               const isSelected = selectedIndex === idx;
@@ -317,7 +315,7 @@ export default function QuestionView({
                 const isCorrectOption = idx === lastResult.correctIndex;
                 if (isCorrectOption) {
                   cardStyles =
-                    'bg-emerald-600 text-white border-emerald-300 ring-2 ring-emerald-400 shadow-xl shadow-emerald-500/30 scale-[1.01]';
+                    'bg-emerald-600 text-white border-emerald-300 ring-2 ring-emerald-400 shadow-xl shadow-emerald-500/30 ';
                   badgeStyles = 'bg-emerald-300 text-slate-950 font-black border border-emerald-200';
                 } else if (isSelected && !lastResult.wasCorrect) {
                   cardStyles =
@@ -370,7 +368,7 @@ export default function QuestionView({
 
                   <span className="flex-1 leading-snug">{option}</span>
 
-                  {lastResult && idx === lastResult.correctIndex && (
+                  <span className="answer-result-icon">{lastResult && idx === lastResult.correctIndex && (
                     <span className="text-white font-black text-base animate-bounce">
                       <CheckCircle className="w-5 h-5 text-white" />
                     </span>
@@ -379,7 +377,7 @@ export default function QuestionView({
                     <span className="text-white font-black text-base">
                       <AlertCircle className="w-5 h-5 text-white" />
                     </span>
-                  )}
+                  )}</span>
                 </motion.button>
               );
             })}

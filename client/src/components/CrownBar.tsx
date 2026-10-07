@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import type { Category, GameStateSync, PlayerState } from '../../../shared/src/index';
+import type { Category, GameStateSync, MatchPresenceResponse, PlayerState } from '../../../shared/src/index';
 import { CATEGORIES } from '../../../shared/src/index';
 import CategoryCharacter from './characters/CategoryCharacter';
 import Card from './ui/Card';
@@ -7,6 +7,8 @@ import Card from './ui/Card';
 interface CrownBarProps {
   state: GameStateSync;
   myPlayerId: string;
+  isConnected: boolean;
+  presence: MatchPresenceResponse | null;
 }
 
 const CROWN_CATEGORIES: Category[] = [
@@ -18,7 +20,7 @@ const CROWN_CATEGORIES: Category[] = [
   'HISTORY'
 ];
 
-export default function CrownBar({ state, myPlayerId }: CrownBarProps) {
+export default function CrownBar({ state, myPlayerId, isConnected, presence }: CrownBarProps) {
   const p1 = state.players.p1;
   const p2 = state.players.p2;
 
@@ -27,6 +29,15 @@ export default function CrownBar({ state, myPlayerId }: CrownBarProps) {
 
   const activePlayer = isP1Turn ? p1 : p2;
   const currentGauge = activePlayer?.crownGauge || 0;
+
+  const connectionLight = (player: PlayerState) => {
+    const completed = state.status === 'COMPLETED';
+    const own = player.id === myPlayerId;
+    const remote = presence?.gameId === state.id ? presence.players[player.id] : undefined;
+    const status = completed ? 'complete' : !isConnected ? 'disconnected' : own || remote === 'live' ? 'live' : remote === 'offline' ? 'disconnected' : 'nominal';
+    const label = completed ? 'Match complete' : !isConnected ? 'Match connection disconnected' : own ? 'You are connected live' : remote === 'live' ? `${player.username} is live in this match` : remote === 'offline' ? `${player.username} is away or disconnected` : 'Match connection healthy; checking opponent presence';
+    return <span className={`player-connection player-connection-${status}`} role="img" aria-label={label} title={label} />;
+  };
 
   const renderPlayerCrowns = (player: PlayerState) => {
     return (
@@ -73,7 +84,7 @@ export default function CrownBar({ state, myPlayerId }: CrownBarProps) {
   return (
     <Card
       variant="glass"
-      className="w-full max-w-md mx-auto p-2.5 sm:p-3.5 flex flex-col gap-2 relative z-20 shadow-2xl"
+      className="match-scoreboard w-full max-w-md mx-auto p-2.5 sm:p-3.5 flex flex-col gap-2 relative z-20 shadow-2xl"
     >
       {/* Players Row */}
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
@@ -99,6 +110,7 @@ export default function CrownBar({ state, myPlayerId }: CrownBarProps) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1">
+                {connectionLight(p1)}
                 <span className="font-extrabold text-xs text-white truncate">{p1.username}</span>
                 {myPlayerId === p1.id && (
                   <span className="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1 rounded">You</span>
@@ -144,6 +156,7 @@ export default function CrownBar({ state, myPlayerId }: CrownBarProps) {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1">
+                  {connectionLight(p2)}
                   <span className="font-extrabold text-xs text-white truncate">{p2.username}</span>
                   {myPlayerId === p2.id && (
                     <span className="text-[9px] font-bold text-rose-300 bg-rose-500/20 px-1 rounded">You</span>

@@ -67,10 +67,10 @@ export function crownReaction(result: QuestionResult): { category: Category; eve
 }
 
 export const CHARACTER_ENTRANCES = {
-  ENTERTAINMENT: { x: [-45, 8, 0], rotate: [-18, 8, 0], scale: [0.7, 1.08, 1] },
-  SCIENCE: { rotate: [-14, 14, -8, 0], y: [12, -4, 0] },
-  SPORTS: { y: [32, -14, 5, 0], scale: [0.8, 1.08, 1] },
-  ART: { rotate: [-24, 10, 0], x: [-20, 0] },
-  GEOGRAPHY: { x: [-28, 5, 0], y: [18, -12, 0] },
-  HISTORY: { y: [24, 0], scale: [0.9, 1] },
+  ENTERTAINMENT: { x: ['-100vw', 24, -8, 0], rotate: [-30, 18, -8, 0], scaleX: [0.6, 1.2, 0.9, 1], scaleY: [1.3, 0.8, 1.1, 1] },
+  SCIENCE: { x: ['-100vw', 12, -6, 0], rotate: [-160, 22, -14, 0], y: [60, -12, 8, 0] },
+  SPORTS: { x: ['-100vw', 10, -5, 0], y: [80, -35, 12, 0], scaleX: [1.3, 0.75, 1.15, 1], scaleY: [0.6, 1.25, 0.85, 1] },
+  ART: { x: ['-100vw', 18, -6, 0], rotate: [-40, 20, -8, 0], y: [20, -8, 4, 0] },
+  GEOGRAPHY: { x: ['-100vw', 25, -10, 0], y: [45, -25, 10, 0], rotate: [-25, 12, -5, 0] },
+  HISTORY: { x: ['-100vw', 6, -3, 0], y: [90, -6, 3, 0], rotate: [-8, 5, -2, 0] },
 };

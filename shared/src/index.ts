@@ -334,5 +334,13 @@ export interface PushNotificationPayload {
 export interface PushTestResponse {
   outcome: 'accepted' | 'retrying' | 'rejected' | 'queued' | 'unsubscribed';
 }
+/** Visible match tabs renew a 30-second lease every 10 seconds. */
+export interface MatchPresenceRequest { connectionId: string; active: boolean }
+export interface MatchPresenceResponse {
+  gameId: string;
+  players: Record<string, 'live' | 'offline'>;
+  expiresInMs: number;
+}
+
 /** SSE control: normal rotation needs no REST read; expired/conflicting state does. */
 export interface GameReconnectEvent { refresh: boolean }
