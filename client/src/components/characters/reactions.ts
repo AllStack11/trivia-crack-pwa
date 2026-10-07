@@ -4,6 +4,10 @@ export const RESULT_REVIEW_MS = 6000;
 export const SIDEKICK_MS = 4000;
 export type ReactionEvent = 'correct' | 'incorrect' | 'crown' | 'steal';
 export const DIALOGUE: Record<Category, Record<ReactionEvent, string[]>> = {
+  MEMES: { correct: ['Great answer!', 'You nailed it!'], incorrect: ['Better luck next turn!', 'Keep trying!'], crown: ['Crown secured!', 'Royal victory!'], steal: ['Crown stolen!', 'A royal takeover!'] },
+  CUSTOM: { correct: ['Great answer!', 'You nailed it!'], incorrect: ['Better luck next turn!', 'Keep trying!'], crown: ['Crown secured!', 'Royal victory!'], steal: ['Crown stolen!', 'A royal takeover!'] },
+  MOVIES_TV: { correct: ['Great answer!', 'You nailed it!'], incorrect: ['Better luck next turn!', 'Keep trying!'], crown: ['Crown secured!', 'Royal victory!'], steal: ['Crown stolen!', 'A royal takeover!'] },
+  VIDEO_GAMES: { correct: ['Great answer!', 'You nailed it!'], incorrect: ['Better luck next turn!', 'Keep trying!'], crown: ['Crown secured!', 'Royal victory!'], steal: ['Crown stolen!', 'A royal takeover!'] },
   ENTERTAINMENT: {
     correct: ['Standing ovation, darling!', 'You understood the assignment. And the sequel.', 'Someone get this brain an agent.'],
     incorrect: ['We’ll fix that in post.', 'A plot twist! Unfortunately, the wrong one.', 'The audition continues, darling.'],
@@ -67,6 +71,11 @@ export function crownReaction(result: QuestionResult): { category: Category; eve
 }
 
 export const CHARACTER_ENTRANCES = {
+  MEMES: { x: ['-100vw', 0], rotate: [0, 0] },
+  CUSTOM: { x: ['-100vw', 0], rotate: [0, 0] },
+  MOVIES_TV: { x: ['-100vw', 0], rotate: [0, 0] },
+  VIDEO_GAMES: { x: ['-100vw', 0], rotate: [0, 0] },
+
   ENTERTAINMENT: { x: ['-100vw', 24, -8, 0], rotate: [-30, 18, -8, 0], scaleX: [0.6, 1.2, 0.9, 1], scaleY: [1.3, 0.8, 1.1, 1] },
   SCIENCE: { x: ['-100vw', 12, -6, 0], rotate: [-160, 22, -14, 0], y: [60, -12, 8, 0] },
   SPORTS: { x: ['-100vw', 10, -5, 0], y: [80, -35, 12, 0], scaleX: [1.3, 0.75, 1.15, 1], scaleY: [0.6, 1.25, 0.85, 1] },

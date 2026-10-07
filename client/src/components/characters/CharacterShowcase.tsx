@@ -12,7 +12,7 @@ const ALL_CATEGORIES: Category[] = [
   'SPORTS',
   'ENTERTAINMENT',
   'GEOGRAPHY',
-  'HISTORY'
+  'HISTORY', 'MEMES', 'CUSTOM', 'MOVIES_TV', 'VIDEO_GAMES'
 ];
 
 interface CharacterShowcaseProps {
@@ -55,7 +55,7 @@ export default function CharacterShowcase({
           <h3 className="text-base sm:text-lg font-black text-white tracking-tight flex items-center gap-2">
             <span>Crown Guardians</span>
             {unlockedCrowns && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-400/30">
-              {unlockedCrowns.length}/6 Unlocked
+              {unlockedCrowns.length}/{ALL_CATEGORIES.length} Unlocked
             </span>}
           </h3>
         </div>

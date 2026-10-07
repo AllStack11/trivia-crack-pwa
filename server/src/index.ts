@@ -7,10 +7,9 @@ import {
   QUESTION_ANSWER_GRACE_MS,
   type AnswerQuestionRequest,
   type Category,
+  type CustomQuestionSubmission,
   type CrownChoiceRequest,
-  type ExpandPackRequest,
   type GameStateSync,
-  type QuestionPackExport,
   type PushTestResponse,
   type SpinResponse
 } from '../../shared/src/index';
@@ -32,13 +31,9 @@ import { isGameParticipant, listInvitations, listMatches, respondToInvitation, s
 import { drainPushOutbox, enqueueTest, hasSubscription, pushConfigured, removeSubscription, saveSubscription, type PushEnvironment } from './services/pushService';
 import type { PushSubscriptionRequest } from '../../shared/src/index';
 import {
-  createPack,
-  deletePack,
-  expandPack,
   exportPack,
   fetchLiveQuestions,
   getPack,
-  importPack,
   listPacks
 } from './services/packService';
 import {
@@ -325,107 +320,45 @@ app.get('/api/packs/:packId', async (c) => {
   return c.json(pack);
 });
 
-// Create Pack
-app.post('/api/packs', async (c) => {
-  const db = await getDatabase(c.env);
-  let body: QuestionPackExport;
+// User contributions have one authenticated, shared destination.
+app.use('/api/questions/custom', bodyLimit({ maxSize: 8192, onError: c => c.json({ error: 'Question too large' }, 413) }));
+app.post('/api/questions/custom', async c => {
+  const { db, account } = await authenticated(c);
+  if (!account) return c.json({ error: 'Authentication required' }, 401);
   try {
-    body = await c.req.json<QuestionPackExport>();
-  } catch {
-    return c.json({ error: 'Invalid JSON request body' }, 400);
-  }
-
-  try {
-    const packId = await createPack(
-      db,
-      body.title,
-      body.description,
-      'User',
-      (body.questions || []).map((question) => ({ ...question, difficulty: question.difficulty || 'medium' }))
-    );
-    const pack = await getPack(db, packId);
-    return c.json(pack, 201);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to create pack';
-    return c.json({ error: message }, 400);
+    const body = await c.req.json<CustomQuestionSubmission>();
+    const text = (value: unknown, max: number): string => {
+      if (typeof value !== 'string' || !value.trim() || value.trim().length > max) throw new Error('Invalid question or answer');
+      return value.trim();
+    };
+    const question = text(body.question, 1000);
+    const correctAnswer = text(body.correctAnswer, 200);
+    if (!Array.isArray(body.incorrectAnswers) || body.incorrectAnswers.length !== 3) throw new Error('Provide exactly three incorrect answers');
+    const incorrectAnswers = body.incorrectAnswers.map((answer: unknown) => text(answer, 200));
+    if (new Set([correctAnswer, ...incorrectAnswers].map(answer => answer.toLowerCase())).size !== 4) throw new Error('Answer choices must be distinct');
+    let imageUrl: string | null = null;
+    if (body.imageUrl) {
+      imageUrl = text(body.imageUrl, 2000);
+      if (!['https:', 'http:'].includes(new URL(imageUrl).protocol)) throw new Error('Image URL must use HTTP or HTTPS');
+    }
+    const id = `custom_${crypto.randomUUID()}`;
+    await db.batch([
+      { sql: "INSERT OR IGNORE INTO question_packs (id, title, description, is_default, created_by, created_at) VALUES ('custom', 'Custom Community Pool', 'Shared questions contributed by players', 1, 'community', ?)", params: [Date.now()] },
+      { sql: "INSERT INTO questions (id, pack_id, category, question, image_url, correct_answer, incorrect_answers_json, difficulty) VALUES (?, 'custom', 'CUSTOM', ?, ?, ?, ?, 'medium')", params: [id, question, imageUrl, correctAnswer, JSON.stringify(incorrectAnswers)] },
+    ]);
+    return c.json({ id, category: 'CUSTOM' }, 201);
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'Invalid question' }, 400);
   }
 });
 
-// Delete Pack
-app.delete('/api/packs/:packId', async (c) => {
-  const db = await getDatabase(c.env);
-  const packId = c.req.param('packId');
-
-  const success = await deletePack(db, packId);
-  if (!success) {
-    return c.json({ error: 'Cannot delete pack (default pack is protected)' }, 400);
-  }
-  return c.json({ success: true });
-});
-
-// Export Pack JSON
-app.get('/api/packs/:packId/export', async (c) => {
-  const db = await getDatabase(c.env);
-  const packId = c.req.param('packId');
-  const exported = await exportPack(db, packId);
-  if (!exported) {
-    return c.json({ error: 'Pack not found' }, 404);
-  }
-  return c.json(exported);
-});
-
-// Import Pack JSON
-app.post('/api/packs/import', async (c) => {
-  const db = await getDatabase(c.env);
-  let body: QuestionPackExport;
-  try {
-    body = await c.req.json<QuestionPackExport>();
-  } catch {
-    return c.json({ error: 'Invalid JSON payload' }, 400);
-  }
-
-  try {
-    const packId = await importPack(db, body, 'Imported');
-    const pack = await getPack(db, packId);
-    return c.json(pack, 201);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to import pack';
-    return c.json({ error: message }, 400);
-  }
-});
-
-// Expand Pack with Free Trivia APIs
-app.post('/api/packs/:packId/expand', async (c) => {
-  const db = await getDatabase(c.env);
-  const packId = c.req.param('packId');
-  const pack = await getPack(db, packId);
-  if (!pack) {
-    return c.json({ error: 'Pack not found' }, 404);
-  }
-
-  let body: ExpandPackRequest = {};
-  try {
-    body = (await c.req.json<ExpandPackRequest>().catch(() => ({}))) || {};
-  } catch {
-    body = {};
-  }
-
-  const countPerCategory = Math.min(Math.max(body.countPerCategory || 5, 1), 20);
-  const validCategories: Category[] = (body.categories || []).filter((cat): cat is Category =>
-    Object.hasOwn(CATEGORIES, cat)
-  );
-
-  const forceRefresh = body.forceRefresh === true || c.req.query('refresh') === 'true';
-
-  const result = await expandPack(
-    db,
-    packId,
-    countPerCategory,
-    validCategories.length > 0 ? validCategories : undefined,
-    forceRefresh
-  );
-
-  return c.json(result);
+app.post('/api/packs', c => c.json({ error: 'Add questions to the shared Custom pool at /api/questions/custom' }, 410));
+app.post('/api/packs/import', c => c.json({ error: 'Pack imports have been removed. Use the shared Custom pool.' }, 410));
+app.post('/api/packs/:packId/expand', c => c.json({ error: 'Pack expansion has been removed.' }, 410));
+app.delete('/api/packs/:packId', c => c.json({ error: 'Pack deletion has been removed.' }, 410));
+app.get('/api/packs/:packId/export', async c => {
+  const pack = await exportPack(await getDatabase(c.env), c.req.param('packId'));
+  return pack ? c.json(pack) : c.json({ error: 'Pack not found' }, 404);
 });
 
 // Live Question Fetching from Free Trivia APIs with Multi-Tier Caching

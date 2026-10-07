@@ -1,3 +1,4 @@
+import { CLASSIC_CATEGORIES } from '../../shared/src/index';
 import { expect, test, describe, beforeEach } from 'bun:test';
 import type { Category } from '../../shared/src/index';
 import type { AppDatabase } from '../src/db/database';
@@ -30,7 +31,7 @@ describe('Game Engine State Machine', () => {
   });
 
   test('Wheel spin generates valid slice and question prompt', async () => {
-    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO, ['default'], CLASSIC_CATEGORIES);
     const spin = await spinWheel(db, host.gameId, PLAYER_ONE);
     expect(spin.sliceIndex).toBeGreaterThanOrEqual(0);
     expect(spin.sliceIndex).toBeLessThanOrEqual(6);
@@ -49,7 +50,7 @@ describe('Game Engine State Machine', () => {
 
 
   test('Correct answer increments crown gauge and retains turn', async () => {
-    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO, ['default'], CLASSIC_CATEGORIES);
 
     // Force a question state in DB
     const questionId = 'art_1';
@@ -88,7 +89,7 @@ describe('Game Engine State Machine', () => {
   });
 
   test('Reaching 3 gauge points triggers CROWN_CHOICE', async () => {
-    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO, ['default'], CLASSIC_CATEGORIES);
     
 
     // Set crown gauge already at 2
@@ -126,7 +127,7 @@ describe('Game Engine State Machine', () => {
   });
 
   test('Crown claim awards character crown upon correct answer', async () => {
-    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO, ['default'], CLASSIC_CATEGORIES);
     
 
     await db.execute(`UPDATE games SET active_mode = 'CROWN_CHOICE' WHERE id = ?`, [host.gameId]);
@@ -164,7 +165,7 @@ describe('Game Engine State Machine', () => {
   });
 
   test("Incorrect answers preserve each player's gauge across turn changes", async () => {
-    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO, ['default'], CLASSIC_CATEGORIES);
 
     await db.execute('UPDATE games SET crown_gauge = 2 WHERE id = ?', [host.gameId]);
 
@@ -225,7 +226,7 @@ describe('Game Engine State Machine', () => {
   });
 
   test('a question can be submitted only once when duplicate answers race', async () => {
-    const { gameId } = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    const { gameId } = await createGame(db, PLAYER_ONE, PLAYER_TWO, ['default'], CLASSIC_CATEGORIES);
     const questionId = 'race_question';
     const stored = {
       questionData: {
@@ -265,7 +266,7 @@ describe('Game Engine State Machine', () => {
   });
 
   test('Steal Challenge: challenger steals crown on correct answer', async () => {
-    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO, ['default'], CLASSIC_CATEGORIES);
 
     // Give Alice ART crown and Bob SCIENCE crown
     await db.execute(
@@ -310,7 +311,7 @@ describe('Game Engine State Machine', () => {
   });
 
   test('6-Crown Victory concludes match with GAME_OVER', async () => {
-    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO, ['default'], CLASSIC_CATEGORIES);
     
 
     // Give Alice 5 crowns already
@@ -356,7 +357,7 @@ describe('Game Engine State Machine', () => {
   });
 
   test('Resignation surrenders match to opponent', async () => {
-    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
+    const host = await createGame(db, PLAYER_ONE, PLAYER_TWO, ['default'], CLASSIC_CATEGORIES);
 
     await resignGame(db, host.gameId, PLAYER_ONE);
 

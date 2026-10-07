@@ -1,3 +1,4 @@
+import { CLASSIC_CATEGORIES } from '../../shared/src/index';
 import { beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { createBunDatabase, createD1Database, SCHEMA_SQL, type AppDatabase } from '../src/db/database';
 import { answerQuestion, chooseCrown, createGame, getGameStateSync, resignGame, spinWheel } from '../src/services/gameEngine';
@@ -22,7 +23,7 @@ describe('game integrity through the D1 adapter', () => {
     db = createD1Database(asD1(storage));
     p1 = await register(db, { username: 'Alice' });
     p2 = await register(db, { username: 'Bob' });
-    gameId = (await createGame(db, p1.account.id, p2.account.id)).gameId;
+    gameId = (await createGame(db, p1.account.id, p2.account.id, ['default'], CLASSIC_CATEGORIES)).gameId;
   });
 
   const question = async (options: { id?: string; startedAt?: number; crown?: boolean } = {}) => {
@@ -130,7 +131,7 @@ describe('game integrity through the D1 adapter', () => {
     // The second player also saw these questions, even though the first answered.
     const next = await getRandomQuestion(db, ['default'], 'ART', [], [p2.account.id]);
     expect(next.id).toBe(unseen);
-    const fresh = await createGame(db, p2.account.id, p1.account.id);
+    const fresh = await createGame(db, p2.account.id, p1.account.id, ['default'], CLASSIC_CATEGORIES);
     await db.execute("UPDATE games SET active_mode = 'CROWN_CHOICE' WHERE id = ?", [fresh.gameId]);
     await chooseCrown(db, fresh.gameId, p2.account.id, 'claim', 'ART');
     expect((await getGameStateSync(db, fresh.gameId))?.activeQuestion?.id).toBe(unseen);

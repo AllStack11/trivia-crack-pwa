@@ -22,17 +22,17 @@ describe('Pack Service & OpenTDB Integration', () => {
     await db.exec(SCHEMA_SQL);
   });
 
-  test('Seeding initializes 180 curated questions across 6 categories', async () => {
+  test('Seeding initializes 189 curated questions across 9 built-in categories', async () => {
     await ensureDefaultPackSeeded(db);
 
     const packs = await listPacks(db);
     expect(packs.length).toBe(1);
     expect(packs[0].isDefault).toBe(true);
-    expect(packs[0].questionCount).toBe(180);
+    expect(packs[0].questionCount).toBe(189);
 
     const pack = await getPack(db, 'default');
     expect(pack).not.toBeNull();
-    expect(pack?.questions.length).toBe(180);
+    expect(pack?.questions.length).toBe(189);
 
     // Verify all 6 categories are populated with at least 30 questions
     const categories = ['ART', 'SCIENCE', 'SPORTS', 'ENTERTAINMENT', 'GEOGRAPHY', 'HISTORY'] as const;

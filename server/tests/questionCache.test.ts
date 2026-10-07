@@ -354,7 +354,7 @@ describe('Multi-Tier Question Caching System', () => {
       expect(memoryCache.has('SCIENCE', 1)).toBe(false);
     });
 
-    test('POST /api/packs/:packId/expand supports forceRefresh flag', async () => {
+    test('user pack expansion remains retired even with forceRefresh', async () => {
       await ensureDefaultPackSeeded(db);
 
       const res = await request('/api/packs/default/expand', {
@@ -367,10 +367,7 @@ describe('Multi-Tier Question Caching System', () => {
         })
       });
 
-      expect(res.status).toBe(200);
-      const data = (await res.json()) as { added: number; providersUsed: string[] };
-      expect(typeof data.added).toBe('number');
-      expect(Array.isArray(data.providersUsed)).toBe(true);
+      expect(res.status).toBe(410);
     });
   });
 });

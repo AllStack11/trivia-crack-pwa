@@ -77,7 +77,7 @@ describe('Trivia API Expansion & Graceful Fallbacks', () => {
   test('expandPackQuestions adds questions and avoids duplicates', async () => {
     await ensureDefaultPackSeeded(db);
     const initialPack = await getPack(db, 'default');
-    expect(initialPack?.questions.length).toBe(180);
+    expect(initialPack?.questions.length).toBe(189);
 
     // A deterministic novel provider result; a seeded bank cannot expand from
     // the same exhausted curated fallback when the network is unavailable.
@@ -86,11 +86,11 @@ describe('Trivia API Expansion & Graceful Fallbacks', () => {
     // Expand pack with 1 question per category across ART and SCIENCE
     const expandResult = await expandPackQuestions(db, 'default', 1, ['ART', 'SCIENCE']);
     expect(expandResult.added).toBeGreaterThanOrEqual(1);
-    expect(expandResult.totalInPack).toBe(180 + expandResult.added);
+    expect(expandResult.totalInPack).toBe(189 + expandResult.added);
     expect(expandResult.providersUsed.length).toBeGreaterThanOrEqual(1);
 
     const updatedPack = await getPack(db, 'default');
-    expect(updatedPack?.questions.length).toBe(180 + expandResult.added);
+    expect(updatedPack?.questions.length).toBe(189 + expandResult.added);
 
     // Running expansion again shouldn't create duplicate question texts
     const questionsNow = updatedPack?.questions || [];
@@ -142,40 +142,7 @@ describe('Trivia API Expansion & Graceful Fallbacks', () => {
     expect(typeof body.provider).toBe('string');
   });
 
-  test('POST /api/packs/:packId/expand expands pack and returns statistics', async () => {
-    // First ensure default pack is seeded
-    await ensureDefaultPackSeeded(db);
-
-    const res = await request('/api/packs/default/expand', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ countPerCategory: 1, categories: ['SPORTS'] })
-    });
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      packId: string;
-      added: number;
-      totalInPack: number;
-      byCategory: Record<string, number>;
-      providersUsed: string[];
-    };
-
-    expect(body.packId).toBe('default');
-    expect(typeof body.added).toBe('number');
-    expect(body.totalInPack).toBeGreaterThanOrEqual(180);
-    expect(Array.isArray(body.providersUsed)).toBe(true);
-  });
-
-  test('POST /api/packs/:packId/expand returns 404 for nonexistent pack', async () => {
-    const res = await request('/api/packs/nonexistent_pack_id/expand', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ countPerCategory: 2 })
-    });
-
-    expect(res.status).toBe(404);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe('Pack not found');
+  test('user pack expansion is retired', async () => {
+    expect((await request('/api/packs/default/expand', { method: 'POST' })).status).toBe(410);
   });
 });

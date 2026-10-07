@@ -1,4 +1,5 @@
 import type { AccountSummary, InvitationSummary, MatchSummary } from '../../../shared/src/index';
+import { selectGameCategories } from './gameCategories';
 import type { AppDatabase } from '../db/database';
 
 interface InvitationRow {
@@ -87,14 +88,15 @@ export async function respondToInvitation(
   const gameId = `game_${crypto.randomUUID()}`;
   const packIds = JSON.parse(row.pack_ids_json) as string[];
   const legacyCode = `LEGACY-${crypto.randomUUID()}`;
+  const activeCategories = await selectGameCategories(db);
   await db.batch([
     {
       sql: `INSERT INTO games (id, invite_code, player1_id, player2_id, status, current_turn_player_id,
         crown_gauge, round_number, max_rounds, active_question_json, active_mode, winner_id, win_reason,
-        pack_ids_json, last_result_json, created_at, updated_at)
-        SELECT ?, ?, ?, ?, 'IN_PROGRESS', ?, 0, 1, 25, NULL, 'SPIN', NULL, NULL, ?, NULL, ?, ?
+        pack_ids_json, active_categories_json, last_result_json, created_at, updated_at)
+        SELECT ?, ?, ?, ?, 'IN_PROGRESS', ?, 0, 1, 25, NULL, 'SPIN', NULL, NULL, ?, ?, NULL, ?, ?
         WHERE EXISTS (SELECT 1 FROM game_invitations WHERE id = ? AND recipient_id = ? AND status = 'PENDING')`,
-      params: [gameId, legacyCode, row.sender_id, row.recipient_id, row.sender_id, JSON.stringify(packIds), now, now, invitationId, recipientId]
+      params: [gameId, legacyCode, row.sender_id, row.recipient_id, row.sender_id, JSON.stringify(packIds), JSON.stringify(activeCategories), now, now, invitationId, recipientId]
     },
     {
       sql: `UPDATE game_invitations SET status = 'ACCEPTED', game_id = ?, updated_at = ?

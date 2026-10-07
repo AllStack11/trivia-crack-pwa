@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { Category, GameStateSync } from '../../../shared/src/index';
-import { CATEGORIES } from '../../../shared/src/index';
+import { CATEGORIES, matchCategories } from '../../../shared/src/index';
 import { playButtonPop, triggerHaptic } from '../utils/audio';
 import CategoryCharacter from './characters/CategoryCharacter';
 import { CHARACTER_PROFILES } from './characters/characterData';
@@ -15,14 +15,6 @@ interface CrownModalProps {
   onClose?: () => void;
 }
 
-const ALL_CATEGORIES: Category[] = [
-  'ART',
-  'SCIENCE',
-  'SPORTS',
-  'ENTERTAINMENT',
-  'GEOGRAPHY',
-  'HISTORY',
-];
 
 export default function CrownModal({
   state,
@@ -38,7 +30,7 @@ export default function CrownModal({
   const myCrowns = myPlayer?.crowns || [];
   const opponentCrowns = opponent?.crowns || [];
 
-  const unownedCategories = ALL_CATEGORIES.filter((c) => !myCrowns.includes(c));
+  const unownedCategories = matchCategories(state).filter((c) => !myCrowns.includes(c));
   const canSteal = myCrowns.length > 0 && opponentCrowns.length > 0;
 
   const [mode, setMode] = useState<'claim' | 'steal'>('claim');

@@ -42,7 +42,7 @@ export async function ensureDefaultPackSeeded(db: AppDatabase): Promise<void> {
     await db.execute(
       `INSERT OR IGNORE INTO question_packs (id, title, description, is_default, created_by, created_at)
        VALUES (?, ?, ?, 1, 'system', ?)`,
-      ['default', 'Classic Trivia Clash Pack', 'An automatically growing trivia bank across all 6 categories, starting with 180 curated questions', Date.now()]
+      ['default', 'Classic Trivia Clash Pack', 'An automatically growing trivia bank across the built-in categories', Date.now()]
     );
   }
 
@@ -51,7 +51,7 @@ export async function ensureDefaultPackSeeded(db: AppDatabase): Promise<void> {
     ['default']
   );
 
-  if (!countRow || countRow.count < 180) {
+  if (!countRow || countRow.count < CURATED_QUESTIONS.length) {
     for (let i = 0; i < CURATED_QUESTIONS.length; i += 14) {
       const questions = CURATED_QUESTIONS.slice(i, i + 14);
       await db.execute(
@@ -272,7 +272,7 @@ export async function getRandomQuestion(
   participantIds: string[] = []
 ): Promise<QuestionData> {
   await ensureDefaultPackSeeded(db);
-  const activePacks = packIds.length > 0 ? packIds : ['default'];
+  const activePacks = category === 'CUSTOM' ? ['custom'] : (packIds.length > 0 ? packIds : ['default']);
   const placeholders = 'SELECT value FROM json_each(?)';
 
   // Exclude copies of answered content across packs and providers, too.
@@ -318,6 +318,12 @@ export async function getRandomQuestion(
       incorrectAnswers: incorrect,
       difficulty: row.difficulty
     };
+  }
+
+  if (category === 'CUSTOM') {
+    const replay = await db.queryFirst<DbQuestionRow>("SELECT * FROM questions WHERE pack_id = 'custom' AND category = 'CUSTOM' ORDER BY RANDOM() LIMIT 1");
+    if (!replay) throw new Error('The Custom pool is empty. Add a question first.');
+    return { id: `replay_${crypto.randomUUID()}`, packId: 'custom', category, question: replay.question, imageUrl: replay.image_url || undefined, correctAnswer: replay.correct_answer, incorrectAnswers: JSON.parse(replay.incorrect_answers_json), difficulty: replay.difficulty };
   }
 
   // Turns only read stored content; provider requests happen in background ingestion.

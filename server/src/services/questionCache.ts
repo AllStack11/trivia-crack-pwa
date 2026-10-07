@@ -245,7 +245,7 @@ export class MemoryQuestionCache {
       SPORTS: 0,
       ENTERTAINMENT: 0,
       GEOGRAPHY: 0,
-      HISTORY: 0
+      MEMES: 0, CUSTOM: 0, MOVIES_TV: 0, VIDEO_GAMES: 0, HISTORY: 0
     };
 
     for (const cat of CATEGORIES_LIST) {
@@ -418,7 +418,7 @@ export async function countDbCachedQuestionsByCategory(
     SPORTS: 0,
     ENTERTAINMENT: 0,
     GEOGRAPHY: 0,
-    HISTORY: 0
+    MEMES: 0, CUSTOM: 0, MOVIES_TV: 0, VIDEO_GAMES: 0, HISTORY: 0
   };
 
   try {

@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
-import type { Category, GameStateSync, MatchPresenceResponse, PlayerState } from '../../../shared/src/index';
-import { CATEGORIES } from '../../../shared/src/index';
+import type { GameStateSync, MatchPresenceResponse, PlayerState } from '../../../shared/src/index';
+import { CATEGORIES, matchCategories } from '../../../shared/src/index';
 import CategoryCharacter from './characters/CategoryCharacter';
 import Card from './ui/Card';
 
@@ -11,14 +11,6 @@ interface CrownBarProps {
   presence: MatchPresenceResponse | null;
 }
 
-const CROWN_CATEGORIES: Category[] = [
-  'ART',
-  'SCIENCE',
-  'SPORTS',
-  'ENTERTAINMENT',
-  'GEOGRAPHY',
-  'HISTORY'
-];
 
 export default function CrownBar({ state, myPlayerId, isConnected, presence }: CrownBarProps) {
   const p1 = state.players.p1;
@@ -42,7 +34,7 @@ export default function CrownBar({ state, myPlayerId, isConnected, presence }: C
   const renderPlayerCrowns = (player: PlayerState) => {
     return (
       <div className="flex items-center justify-between gap-0.5">
-        {CROWN_CATEGORIES.map((category) => {
+        {matchCategories(state).map((category) => {
           const isUnlocked = player.crowns.includes(category);
           const catInfo = CATEGORIES[category];
 

@@ -21,33 +21,41 @@ export type TriviaProviderName =
   | 'the-trivia-api-v1'
   | 'willfry'
   | 'curated-fallback';
-export const CATEGORY_IDS: Category[] = [
+// Automatic ingestion excludes the user-owned Custom pool.
+export const CATEGORY_IDS: Exclude<Category, 'CUSTOM'>[] = [
   'ART',
   'SCIENCE',
   'SPORTS',
   'ENTERTAINMENT',
   'GEOGRAPHY',
-  'HISTORY'
+  'HISTORY',
+  'MEMES',
+  'MOVIES_TV',
+  'VIDEO_GAMES'
 ];
 
 // OpenTDB category IDs
-const OPENTDB_CATEGORY_MAP: Record<Category, number[]> = {
+const OPENTDB_CATEGORY_MAP: Partial<Record<Category, number[]>> = {
   ART: [25],
   SCIENCE: [17, 18, 19],
   SPORTS: [21],
   ENTERTAINMENT: [11, 12, 14, 15],
   GEOGRAPHY: [22],
-  HISTORY: [23]
+  HISTORY: [23],
+  MEMES: [9],
+  MOVIES_TV: [11, 14],
+  VIDEO_GAMES: [15]
 };
 
 // The Trivia API (v1 / v2) category tags
-const TRIVIA_API_CATEGORY_MAP: Record<Category, string> = {
+const TRIVIA_API_CATEGORY_MAP: Partial<Record<Category, string>> = {
   ART: 'arts_and_literature',
   SCIENCE: 'science',
   SPORTS: 'sport_and_leisure',
   ENTERTAINMENT: 'film_and_tv,music',
   GEOGRAPHY: 'geography',
-  HISTORY: 'history'
+  HISTORY: 'history',
+  MOVIES_TV: 'film_and_tv'
 };
 
 /**
@@ -153,6 +161,7 @@ export async function fetchFromTriviaApiV2(
   timeoutMs: number = 4000
 ): Promise<QuestionData[]> {
   const catParam = TRIVIA_API_CATEGORY_MAP[category];
+  if (!catParam) return [];
   const url = `https://the-trivia-api.com/v2/questions?categories=${catParam}&limit=${amount}`;
 
   const res = await fetch(url, {
@@ -195,8 +204,11 @@ export async function fetchFromOpenTdb(
   timeoutMs: number = 4000
 ): Promise<QuestionData[]> {
   const catIds = OPENTDB_CATEGORY_MAP[category];
+  if (!catIds?.length) return [];
   const catId = catIds[Math.floor(Math.random() * catIds.length)];
-  const url = `https://opentdb.com/api.php?amount=${amount}&category=${catId}&type=multiple`;
+  // General Knowledge contains sparse meme content; request one larger bounded batch.
+  const requestAmount = category === 'MEMES' ? 50 : amount;
+  const url = `https://opentdb.com/api.php?amount=${requestAmount}&category=${catId}&type=multiple`;
 
   const res = await fetch(url, {
     signal: AbortSignal.timeout(timeoutMs),
@@ -228,7 +240,10 @@ export async function fetchFromOpenTdb(
     difficulty: item.difficulty
   }));
 
-  return cleanAndValidateQuestions(rawList, category, packId, 'opentdb');
+  const questions = cleanAndValidateQuestions(rawList, category, packId, 'opentdb');
+  return category === 'MEMES'
+    ? questions.filter(q => /\b(?:memes?|rickroll(?:ing|ed)?|doge|nyan cat|grumpy cat|viral (?:internet )?(?:video|image)|internet (?:phenomenon|phenomena))\b/i.test(q.question)).slice(0, amount)
+    : questions;
 }
 
 /**
@@ -241,6 +256,7 @@ export async function fetchFromTriviaApiV1(
   timeoutMs: number = 4000
 ): Promise<QuestionData[]> {
   const catParam = TRIVIA_API_CATEGORY_MAP[category];
+  if (!catParam) return [];
   const url = `https://the-trivia-api.com/api/questions?categories=${catParam}&limit=${amount}`;
 
   const res = await fetch(url, {
@@ -283,6 +299,7 @@ export async function fetchFromWillFry(
   timeoutMs: number = 4000
 ): Promise<QuestionData[]> {
   const catParam = TRIVIA_API_CATEGORY_MAP[category];
+  if (!catParam) return [];
   const url = `https://trivia.willfry.co.uk/api/questions?categories=${catParam}&limit=${amount}`;
 
   const res = await fetch(url, {
@@ -537,7 +554,7 @@ export async function expandPackQuestions(
     SPORTS: 0,
     ENTERTAINMENT: 0,
     GEOGRAPHY: 0,
-    HISTORY: 0
+    MEMES: 0, CUSTOM: 0, MOVIES_TV: 0, VIDEO_GAMES: 0, HISTORY: 0
   };
   const providersUsedSet = new Set<string>();
 

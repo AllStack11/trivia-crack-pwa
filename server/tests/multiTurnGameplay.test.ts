@@ -298,13 +298,14 @@ describe('Multi-Turn Sequential Game Loop', () => {
     expect(ansData.state.mode).toBe('CROWN_CHOICE');
     expect(ansData.state.players.p1.crownGauge).toBe(0); // gauge resets
 
-    // P1 chooses Claim on GEOGRAPHY
+    // P1 claims one of this match's six active categories.
+    const crownCategory = ansData.state.activeCategories![0];
     const crownChoiceRes = await app.request(`/api/games/${gameId}/crown`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${p1Token}` },
       body: JSON.stringify({
         action: 'claim',
-        category: 'GEOGRAPHY'
+        category: crownCategory
       })
     }, env);
     expect(crownChoiceRes.status).toBe(200);
@@ -313,7 +314,7 @@ describe('Multi-Turn Sequential Game Loop', () => {
     // Crown question is generated
     expect(crownChoiceState.mode).toBe('QUESTION');
     expect(crownChoiceState.activeQuestion?.isCrown).toBe(true);
-    expect(crownChoiceState.activeQuestion?.crownCategory).toBe('GEOGRAPHY');
+    expect(crownChoiceState.activeQuestion?.crownCategory).toBe(crownCategory);
     // Ensure lastResult is cleared on crown choice question!
     expect(crownChoiceState.lastResult).toBeUndefined();
 
@@ -338,8 +339,8 @@ describe('Multi-Turn Sequential Game Loop', () => {
 
     // Crown awarded!
     expect(crownAnsData.result.wasCorrect).toBe(true);
-    expect(crownAnsData.result.awardedCrown).toBe('GEOGRAPHY');
-    expect(crownAnsData.state.players.p1.crowns).toContain('GEOGRAPHY');
+    expect(crownAnsData.result.awardedCrown).toBe(crownCategory);
+    expect(crownAnsData.state.players.p1.crowns).toContain(crownCategory);
     expect(crownAnsData.state.mode).toBe('SPIN');
     expect(crownAnsData.state.currentTurnPlayerId).toBe(p1Id);
   });

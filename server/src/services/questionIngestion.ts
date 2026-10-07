@@ -20,7 +20,7 @@ export async function ingestQuestions(db: AppDatabase): Promise<void> {
     await ensureDefaultPackSeeded(db);
     const existing = await db.query<{ question: string }>("SELECT question FROM questions WHERE pack_id = 'default'");
     const texts = new Set(existing.map(q => normalizeQuestionText(q.question)));
-    // Six parallel category refills finish within the Workers background lifetime.
+    // Refill all nine built-in categories in parallel; Custom accepts user contributions only.
     // No cache reads: every eligible refresh asks providers for new content.
     const results = await Promise.all(CATEGORY_IDS.map(category =>
       fetchTriviaQuestionsWithFallback({ category, amount: 10, forceRefresh: true, excludeTexts: texts })

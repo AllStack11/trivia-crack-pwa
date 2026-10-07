@@ -578,7 +578,7 @@ function AppContent() {
               ? `vs. ${opponentName}`
               : 'Match'
             : view === 'PACK_CREATOR'
-            ? 'Pack Studio'
+            ? 'Custom Questions'
             : undefined
         }
       />
@@ -620,7 +620,7 @@ function AppContent() {
               transition={{ type: 'spring', damping: 26, stiffness: 320 }}
               className="flex-1 flex flex-col h-full overflow-hidden z-20"
             >
-              <PackCreator onBack={handleNavigateToLobby} />
+              <PackCreator onBack={handleNavigateToLobby} token={account?.token} />
             </motion.main>
           )}
 
@@ -692,6 +692,7 @@ function AppContent() {
                 {shouldShowWheel && (
                   <SpinArena state={gameState} playerId={account.id} spinning={isWheelSpinning}>
                     <Wheel
+                      categories={gameState.activeCategories}
                       canSpin={isMyTurn && !isWheelSpinning && !spinPending}
                       isSpinning={isWheelSpinning}
                       pending={spinPending}

@@ -1499,3 +1499,15 @@ export const CURATED_QUESTIONS: Omit<QuestionData, 'packId'>[] = [
     difficulty: 'easy'
   }
 ];
+
+CURATED_QUESTIONS.push(
+{"id": "memes_0", "category": "MEMES", "question": "What song is used in a Rickroll?", "correctAnswer": "Never Gonna Give You Up", "incorrectAnswers": ["Take On Me", "Africa", "All Star"], "difficulty": "easy"},
+{"id": "memes_1", "category": "MEMES", "question": "What breed appears in the original Doge meme?", "correctAnswer": "Shiba Inu", "incorrectAnswers": ["Pug", "Beagle", "Husky"], "difficulty": "easy"},
+{"id": "memes_2", "category": "MEMES", "question": "Which green ogre became a frequent internet meme?", "correctAnswer": "Shrek", "incorrectAnswers": ["Fiona", "Donkey", "Puss in Boots"], "difficulty": "easy"},
+{"id": "movies_tv_3", "category": "MOVIES_TV", "question": "What is the coffee shop in Friends called?", "correctAnswer": "Central Perk", "incorrectAnswers": ["Monks Cafe", "Lukes Diner", "The Coffee Bean"], "difficulty": "easy"},
+{"id": "movies_tv_4", "category": "MOVIES_TV", "question": "Who directed Jurassic Park (1993)?", "correctAnswer": "Steven Spielberg", "incorrectAnswers": ["James Cameron", "George Lucas", "Tim Burton"], "difficulty": "easy"},
+{"id": "movies_tv_5", "category": "MOVIES_TV", "question": "What planet is Luke Skywalker raised on?", "correctAnswer": "Tatooine", "incorrectAnswers": ["Naboo", "Hoth", "Alderaan"], "difficulty": "easy"},
+{"id": "video_games_6", "category": "VIDEO_GAMES", "question": "Who is the brother of Mario?", "correctAnswer": "Luigi", "incorrectAnswers": ["Wario", "Yoshi", "Bowser"], "difficulty": "easy"},
+{"id": "video_games_7", "category": "VIDEO_GAMES", "question": "Which game features the Creeper enemy?", "correctAnswer": "Minecraft", "incorrectAnswers": ["Terraria", "Roblox", "Fortnite"], "difficulty": "easy"},
+{"id": "video_games_8", "category": "VIDEO_GAMES", "question": "What is the kingdom in The Legend of Zelda called?", "correctAnswer": "Hyrule", "incorrectAnswers": ["Midgar", "Tamriel", "Azeroth"], "difficulty": "easy"}
+);

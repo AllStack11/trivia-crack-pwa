@@ -1,11 +1,12 @@
-import { WHEEL_SPIN_DURATION_MS } from '../../../shared/src/index';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { CLASSIC_CATEGORIES, CATEGORIES, WHEEL_SPIN_DURATION_MS } from '../../../shared/src/index';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Zap } from 'lucide-react';
-import type { WheelSlice } from '../../../shared/src/index';
+import type { Category, WheelSlice } from '../../../shared/src/index';
 import { playButtonPop, playWheelTick, triggerHaptic, startWheelMotion } from '../utils/audio';
 import { requestWakeLock, releaseWakeLock } from '../hooks/usePWA';
 interface WheelProps {
+  categories?: Category[];
   canSpin: boolean;
   isSpinning: boolean;
   pending?: boolean;
@@ -20,17 +21,9 @@ interface SliceConfig {
   accentColor: string;
 }
 
-const SLICE_CONFIGS: SliceConfig[] = [
-  { slice: 'GEOGRAPHY', color: '#3B82F6', accentColor: '#1D4ED8' },
-  { slice: 'SCIENCE', color: '#10B981', accentColor: '#047857' },
-  { slice: 'HISTORY', color: '#EAB308', accentColor: '#A16207' },
-  { slice: 'SPORTS', color: '#F97316', accentColor: '#C2410C' },
-  { slice: 'ART', color: '#EF4444', accentColor: '#B91C1C' },
-  { slice: 'ENTERTAINMENT', color: '#EC4899', accentColor: '#BE185D' },
-  { slice: 'CROWN', color: '#F59E0B', accentColor: '#B45309' }
-];
 
 export default function Wheel({
+  categories = CLASSIC_CATEGORIES,
   canSpin: allowedToSpin,
   isSpinning,
   pending = false,
@@ -38,6 +31,8 @@ export default function Wheel({
   onSpinStart,
   onSpinComplete
 }: WheelProps) {
+  const categoryKey = categories.join('|');
+  const SLICE_CONFIGS = useMemo<SliceConfig[]>(() => ([...categories, 'CROWN'] as WheelSlice[]).map(slice => ({ slice, color: slice === 'CROWN' ? '#F59E0B' : CATEGORIES[slice].color, accentColor: slice === 'CROWN' ? '#B45309' : CATEGORIES[slice].accentColor })), [categoryKey]);
   const reducedMotion = useReducedMotion();
   const [mediaReady, setMediaReady] = useState(false);
   const canSpin = allowedToSpin && mediaReady;
@@ -161,6 +156,10 @@ export default function Wheel({
         ctx.shadowOffsetY = radius * .015;
         ctx.drawImage(icon, -artSize / 2, -artSize / 2, artSize, artSize);
       }
+      else {
+        ctx.fillStyle = '#FFFFFF'; ctx.font = `bold ${radius * .065}px sans-serif`; ctx.textAlign = 'center';
+        ctx.fillText(config.slice === 'CROWN' ? 'Crown' : CATEGORIES[config.slice].name, 0, 0);
+      }
       ctx.restore();
     }
 
@@ -240,7 +239,7 @@ export default function Wheel({
     ctx.shadowOffsetY = 2;
     ctx.fill();
     ctx.restore();
-  }, [canSpin, isSpinning]);
+  }, [canSpin, isSpinning, SLICE_CONFIGS]);
 
   // Handle responsive canvas resizing
   const resizeCanvas = useCallback(() => {
@@ -338,6 +337,7 @@ export default function Wheel({
   useEffect(() => {
     let active = true;
     let settled = 0;
+    setMediaReady(false);
     const complete = () => {
       if (!active || ++settled !== SLICE_CONFIGS.length) return;
       drawWheelRef.current(currentRotationRef.current);
@@ -351,7 +351,7 @@ export default function Wheel({
       image.src = `/art/wheel-icons/${config.slice.toLowerCase()}.webp`;
     }
     return () => { active = false; };
-  }, []);
+  }, [SLICE_CONFIGS]);
 
   const handleCenterClick = useCallback(() => {
     if (!canSpin || isSpinning) return;
@@ -509,7 +509,7 @@ export default function Wheel({
         <canvas
           ref={canvasRef}
           role="img"
-          aria-label="Trivia wheel with geography, science, history, sports, art, entertainment, and crown icons"
+          aria-label={`Trivia wheel: ${categories.map(category => CATEGORIES[category].name).join(', ')}, and Crown`}
           className="w-full h-full drop-shadow-2xl rounded-full relative z-10 touch-none pointer-events-none"
           style={{ visibility: mediaReady ? 'visible' : 'hidden' }}
         />

@@ -46,7 +46,7 @@ export default function CategoryCharacter({
   const art = (
     <>
       <img
-        src={`/art/${category.toLowerCase()}.webp`}
+        src={`/art/${category.toLowerCase()}.${['MEMES', 'CUSTOM', 'MOVIES_TV', 'VIDEO_GAMES'].includes(category) ? 'png' : 'webp'}`}
         alt={`${profile.name}, ${profile.title}`}
         draggable={false}
         loading="lazy"

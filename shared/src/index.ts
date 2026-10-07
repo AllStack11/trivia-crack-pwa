@@ -1,4 +1,4 @@
-export type Category = 'ART' | 'SCIENCE' | 'SPORTS' | 'ENTERTAINMENT' | 'GEOGRAPHY' | 'HISTORY';
+export type Category = 'ART' | 'SCIENCE' | 'SPORTS' | 'ENTERTAINMENT' | 'GEOGRAPHY' | 'HISTORY' | 'MEMES' | 'CUSTOM' | 'MOVIES_TV' | 'VIDEO_GAMES';
 
 export type WheelSlice = Category | 'CROWN';
 
@@ -75,6 +75,10 @@ export const CATEGORIES: Record<Category, CategoryInfo> = {
     iconName: 'Globe',
     description: 'Capitals, flags, landmarks, continents, and terrains'
   },
+  MEMES: { id: 'MEMES', name: 'Memes', characterName: 'Mimi', characterTitle: 'The Meme Queen', color: '#8B5CF6', accentColor: '#8B5CF6', textColor: '#FFFFFF', iconName: 'Laugh', description: 'Internet memes and viral culture' },
+  CUSTOM: { id: 'CUSTOM', name: 'Custom', characterName: 'Remix', characterTitle: 'The Collaborator', color: '#14B8A6', accentColor: '#14B8A6', textColor: '#FFFFFF', iconName: 'Users', description: 'Questions contributed by the community' },
+  MOVIES_TV: { id: 'MOVIES_TV', name: 'Movies / TV', characterName: 'Reel', characterTitle: 'The Screen Buff', color: '#6366F1', accentColor: '#6366F1', textColor: '#FFFFFF', iconName: 'Clapperboard', description: 'Films, television and iconic characters' },
+  VIDEO_GAMES: { id: 'VIDEO_GAMES', name: 'Video Games', characterName: 'Pixel', characterTitle: 'The Player One', color: '#06B6D4', accentColor: '#06B6D4', textColor: '#FFFFFF', iconName: 'Gamepad2', description: 'Games, consoles and gaming worlds' },
   HISTORY: {
     id: 'HISTORY',
     name: 'World History',
@@ -88,15 +92,20 @@ export const CATEGORIES: Record<Category, CategoryInfo> = {
   }
 };
 
-export const WHEEL_SLICES: WheelSlice[] = [
+export const CLASSIC_CATEGORIES: Category[] = [
   'GEOGRAPHY',
   'SCIENCE',
   'HISTORY',
   'SPORTS',
   'ART',
   'ENTERTAINMENT',
-  'CROWN'
 ];
+
+export const WHEEL_SLICES: WheelSlice[] = [...CLASSIC_CATEGORIES, 'CROWN'];
+
+export function matchCategories(state: Pick<GameStateSync, 'activeCategories'>): Category[] {
+  return state.activeCategories ?? CLASSIC_CATEGORIES;
+}
 
 export type GameStatus = 'WAITING' | 'IN_PROGRESS' | 'COMPLETED';
 
@@ -146,6 +155,8 @@ export interface QuestionResult {
 }
 
 export interface GameStateSync {
+  /** Six categories selected at creation and fixed for the entire match. */
+  activeCategories?: Category[];
   id: string;
   revision: number;
   status: GameStatus;
@@ -344,3 +355,11 @@ export interface MatchPresenceResponse {
 
 /** SSE control: normal rotation needs no REST read; expired/conflicting state does. */
 export interface GameReconnectEvent { refresh: boolean }
+
+export interface CustomQuestionSubmission {
+  question: string;
+  correctAnswer: string;
+  incorrectAnswers: [string, string, string];
+  imageUrl?: string;
+}
+export interface CustomQuestionSubmissionResponse { id: string; category: 'CUSTOM' }

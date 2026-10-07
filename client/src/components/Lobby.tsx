@@ -933,14 +933,14 @@ export default function Lobby({
                   <div>
                     <h3 className="text-sm font-extrabold text-white">Active Question Packs</h3>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Selected packs are used when creating new matches.
+                      Selected packs are used in new matches. The shared Custom pool is always available.
                     </p>
                   </div>
 
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {packs.map((pack) => {
+                  {packs.filter(pack => pack.id !== 'custom').map((pack) => {
                     const isSelected = selectedPackIds.includes(pack.id);
                     return (
                       <div
@@ -984,7 +984,7 @@ export default function Lobby({
                   className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 text-white font-bold text-xs shadow-xl shadow-indigo-950/50 active:scale-98 transition-all flex items-center justify-center gap-2 mt-2"
                 >
                   <BookOpen className="w-4 h-4" />
-                  <span>Create a question pack</span>
+                  <span>Add to Custom</span>
                 </button>
               </div>
             )}

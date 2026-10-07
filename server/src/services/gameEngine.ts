@@ -7,10 +7,11 @@ import type {
   QuestionResult,
   WheelSlice
 } from '../../../shared/src/index';
-import { WHEEL_SLICES, WHEEL_SPIN_DURATION_MS, SPIN_RESULT_HOLD_MS, QUESTION_DURATION_MS, QUESTION_ANSWER_GRACE_MS } from '../../../shared/src/index';
+import { WHEEL_SPIN_DURATION_MS, SPIN_RESULT_HOLD_MS, QUESTION_DURATION_MS, QUESTION_ANSWER_GRACE_MS } from '../../../shared/src/index';
 import { commitGameMutation, type GameStatement } from './gameMutation';
 import type { AppDatabase } from '../db/database';
 import { getRandomQuestion } from './packService';
+import { selectGameCategories, readGameCategories, validateGameCategories } from './gameCategories';
 
 interface DbGameRow {
   id: string;
@@ -29,6 +30,7 @@ interface DbGameRow {
   winner_id: string | null;
   win_reason: string | null;
   pack_ids_json: string;
+  active_categories_json: string;
   last_spin_json: string | null;
   last_result_json: string | null;
   created_at: number;
@@ -54,14 +56,6 @@ interface StoredActiveQuestion {
   wagerCategory?: Category;
 }
 
-const ALL_CATEGORIES: Category[] = [
-  'ART',
-  'SCIENCE',
-  'SPORTS',
-  'ENTERTAINMENT',
-  'GEOGRAPHY',
-  'HISTORY'
-];
 
 
 /**
@@ -85,7 +79,8 @@ export async function createGame(
   db: AppDatabase,
   player1Id: string,
   player2Id: string,
-  packIds: string[] = ['default']
+  packIds: string[] = ['default'],
+  categories?: Category[]
 ): Promise<{ gameId: string }> {
   if (player1Id === player2Id) throw new Error('A match requires two different players');
   const users = await db.query<{ id: string }>(
@@ -95,19 +90,20 @@ export async function createGame(
   if (users.length !== 2) throw new Error('Both players must have accounts');
   const gameId = `game_${crypto.randomUUID()}`;
   const now = Date.now();
+  const activeCategories = categories ? validateGameCategories(categories) : await selectGameCategories(db);
   await db.execute(
     `INSERT INTO games (
       id, invite_code, player1_id, player2_id, status, current_turn_player_id,
       crown_gauge, round_number, max_rounds, active_question_json, active_mode,
-      winner_id, win_reason, pack_ids_json, last_result_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, 'IN_PROGRESS', ?, 0, 1, 25, NULL, 'SPIN', NULL, NULL, ?, NULL, ?, ?)`,
-    [gameId, `LEGACY-${crypto.randomUUID()}`, player1Id, player2Id, player1Id, JSON.stringify(packIds.length ? packIds : ['default']), now, now]
+      winner_id, win_reason, pack_ids_json, active_categories_json, last_result_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 'IN_PROGRESS', ?, 0, 1, 25, NULL, 'SPIN', NULL, NULL, ?, ?, NULL, ?, ?)`,
+    [gameId, `LEGACY-${crypto.randomUUID()}`, player1Id, player2Id, player1Id, JSON.stringify(packIds.length ? packIds : ['default']), JSON.stringify(activeCategories), now, now]
   );
   return { gameId };
 }
 
 /**
- * Spin the 7-slice wheel
+ * Spin the category wheel
  */
 export async function spinWheel(
   db: AppDatabase,
@@ -129,12 +125,12 @@ export async function spinWheel(
     throw new Error('Wheel cannot be spun right now');
   }
 
-  // 7 slices: [GEOGRAPHY, SCIENCE, HISTORY, SPORTS, ART, ENTERTAINMENT, CROWN]
-  const sliceIndex = Math.floor(Math.random() * WHEEL_SLICES.length);
-  const landedSlice = WHEEL_SLICES[sliceIndex];
+  const slices: WheelSlice[] = [...readGameCategories(game.active_categories_json), 'CROWN'];
+  const sliceIndex = Math.floor(Math.random() * slices.length);
+  const landedSlice = slices[sliceIndex];
 
-  // Calculate target rotation angle for smooth animation
-  const sliceArc = 360 / 7;
+  // Rotation uses the same persisted category order as the client wheel.
+  const sliceArc = 360 / slices.length;
   const sliceCenter = sliceIndex * sliceArc + sliceArc / 2;
   const extraRotations = (4 + Math.floor(Math.random() * 3)) * 360;
   const targetDegrees = extraRotations + ((270 - sliceCenter + 360) % 360);
@@ -209,7 +205,7 @@ export async function chooseCrown(
   }
 
   if (game.status !== 'IN_PROGRESS') throw new Error('Game is not active');
-  if (!ALL_CATEGORIES.includes(chosenCategory) || !['claim', 'steal'].includes(action)) throw new Error('Invalid crown choice');
+  if (!readGameCategories(game.active_categories_json).includes(chosenCategory) || !['claim', 'steal'].includes(action)) throw new Error('Invalid crown choice');
 
   if (game.active_mode !== 'CROWN_CHOICE') {
     throw new Error('Not currently in crown selection mode');
@@ -690,6 +686,7 @@ async function buildGameStateSync(
 
   return {
     id: game.id,
+    activeCategories: readGameCategories(game.active_categories_json),
     revision: game.revision,
     status: game.status,
     players: {

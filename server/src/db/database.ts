@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS games (
   winner_id TEXT,
   win_reason TEXT,
   pack_ids_json TEXT NOT NULL DEFAULT '["default"]',
+  active_categories_json TEXT NOT NULL DEFAULT '["GEOGRAPHY","SCIENCE","HISTORY","SPORTS","ART","ENTERTAINMENT"]',
   last_spin_json TEXT,
   last_result_json TEXT,
   created_at INTEGER NOT NULL,
@@ -152,6 +153,7 @@ CREATE TABLE IF NOT EXISTS game_invitations (
   recipient_id TEXT NOT NULL REFERENCES accounts(user_id),
   status TEXT NOT NULL CHECK(status IN ('PENDING', 'ACCEPTED', 'DECLINED')),
   pack_ids_json TEXT NOT NULL DEFAULT '["default"]',
+  active_categories_json TEXT NOT NULL DEFAULT '["GEOGRAPHY","SCIENCE","HISTORY","SPORTS","ART","ENTERTAINMENT"]',
   game_id TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL

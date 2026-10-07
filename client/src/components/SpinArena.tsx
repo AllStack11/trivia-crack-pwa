@@ -1,8 +1,9 @@
 import { Crown, Sparkles, Zap, Check } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { GameStateSync, Category } from '../../../shared/src/index';
-import { CATEGORIES } from '../../../shared/src/index';
+import { CATEGORIES, matchCategories } from '../../../shared/src/index';
 import CategoryCharacter from './characters/CategoryCharacter';
+const CATEGORY_LABELS: Record<Category, string> = { ART: 'Art', SCIENCE: 'Science', SPORTS: 'Sports', ENTERTAINMENT: 'Pop culture', GEOGRAPHY: 'World', HISTORY: 'History', MEMES: 'Memes', CUSTOM: 'Custom', MOVIES_TV: 'Movies / TV', VIDEO_GAMES: 'Games' };
 const TITLE_POOLS = [
   [
     'CONFIDENCE SOLD SEPARATELY',
@@ -100,11 +101,11 @@ export default function SpinArena({ state, playerId, spinning, children }: { sta
     </div>
     <div className="arena-collection">
       <div className="collection-heading"><span><Crown size={16} /> YOUR CROWNS</span><strong>{mine?.crowns.length ?? 0}<small> / 6</small></strong></div>
-      <div className="collection-characters">{(Object.keys(CATEGORIES) as Category[]).map(category => {
+      <div className="collection-characters">{matchCategories(state).map(category => {
         const earned = mine?.crowns.includes(category);
         return <div key={category} className={`collection-character ${earned ? 'is-earned' : ''}`} style={{ '--category-color': CATEGORIES[category].color } as CSSProperties} title={CATEGORIES[category].name}>
           <CategoryCharacter category={category} size="md" mood={earned ? 'happy' : 'idle'} />
-          <span>{({ ART: 'Art', SCIENCE: 'Science', SPORTS: 'Sports', ENTERTAINMENT: 'Pop culture', GEOGRAPHY: 'World', HISTORY: 'History' })[category]}</span>
+          <span>{CATEGORY_LABELS[category]}</span>
           <div className="collection-slot">{earned ? <Check size={12} aria-label="Collected" /> : <Crown size={12} aria-label="Not collected" />}</div>
         </div>;
       })}</div>

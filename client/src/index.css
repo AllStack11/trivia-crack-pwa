@@ -136,11 +136,6 @@ body { background: #c5eee8; font-family: 'Trebuchet MS', 'Arial Rounded MT Bold'
 .party-right { position: absolute; right: -15px; bottom: -6px; transform: rotate(9deg); }
 .category-confetti { display: flex; gap: 4px; justify-content: center; position: relative; z-index: 3; margin-top: 6px; }
 .category-confetti span { font-size: 9px; font-weight: 900; border-radius: 12px; padding: 5px 7px; color: #fff; background: #ec6d68; }
-.category-confetti span:nth-child(2) { background: #259774; }
-.category-confetti span:nth-child(3) { background: #e58a32; }
-.category-confetti span:nth-child(4) { background: #d95796; }
-.category-confetti span:nth-child(5) { background: #398bbb; }
-.category-confetti span:nth-child(6) { background: #aa831c; }
 .game-welcome.compact { min-height: 250px; }
 .compact .mascot-party { height: 96px; }
 .compact .party-lead { width: 145px; height: 145px; left: 65%; }
@@ -306,12 +301,6 @@ body { background: #c5eee8; font-family: 'Trebuchet MS', 'Arial Rounded MT Bold'
 .play-cta { background: linear-gradient(#2f9948,#207f38); }
 .mascot-party { margin-top: 4px; }
 .compact .party-lead { width: 130px; height: 130px; }
-.category-confetti span:nth-child(1) { background: #b84240; }
-.category-confetti span:nth-child(2) { background: #197b5d; }
-.category-confetti span:nth-child(3) { background: #a85c17; }
-.category-confetti span:nth-child(4) { background: #ad3772; }
-.category-confetti span:nth-child(5) { background: #286f9a; }
-.category-confetti span:nth-child(6) { background: #856511; }
 @media (max-width: 360px) {
   .game-wordmark { font-size: 13px; }
   .game-header button { width: 36px; min-height: 44px; }
@@ -604,3 +593,16 @@ body { background: #c5eee8; font-family: 'Trebuchet MS', 'Arial Rounded MT Bold'
 .trivia-app .game-header button:focus-visible, .trivia-app .game-dock button:focus-visible { outline:2px solid #188358; outline-offset:-3px; }
 @keyframes nav-reveal { from { opacity:0; transform:translateY(-5px) scale(.98); } to { opacity:1; transform:none; } }
 @media(prefers-reduced-motion:reduce) { .nav-popover { animation:none; } }
+
+/* Two identical groups travel one group width for a seamless category loop. */
+.category-confetti { display:block; overflow:hidden; width:100%; }
+.category-confetti-track { display:flex; width:max-content; animation:category-confetti-scroll 38s linear infinite; }
+.category-confetti-group { display:flex; align-items:center; gap:6px; padding-right:6px; flex-shrink:0; }
+.category-confetti-group span { flex-shrink:0; white-space:nowrap; padding:7px 10px; }
+.category-confetti:hover .category-confetti-track { animation-play-state:paused; }
+@keyframes category-confetti-scroll { to { transform:translateX(-50%); } }
+@media (prefers-reduced-motion:reduce) {
+  .category-confetti { overflow-x:auto; }
+  .category-confetti-track { animation:none; }
+  .category-confetti-group + .category-confetti-group { display:none; }
+}
