@@ -86,7 +86,7 @@ describe('Multi-Turn Sequential Game Loop', () => {
     gameId = games.matches[0].gameId;
   });
 
-  test('multi-turn streak, crown gauge reset, turn handoff, and state boundary cleanup', async () => {
+  test('multi-turn streak, crown gauge preservation, turn handoff, and state boundary cleanup', async () => {
     // -------------------------------------------------------------
     // TURN 1: P1 spins and answers correctly
     // -------------------------------------------------------------
@@ -195,7 +195,7 @@ describe('Multi-Turn Sequential Game Loop', () => {
         expect(ansData2.result.turnContinued).toBe(false);
         expect(ansData2.result.nextPlayerId).toBe(p2Id);
         expect(ansData2.state.currentTurnPlayerId).toBe(p2Id);
-        expect(ansData2.state.players.p1.crownGauge).toBe(0); // gauge resets on wrong answer
+        expect(ansData2.state.players.p1.crownGauge).toBe(state.players.p1.crownGauge); // progress survives a wrong answer
 
         // -------------------------------------------------------------
         // TURN 3: Turn passed to P2!

@@ -21,6 +21,7 @@ interface DbGameRow {
   status: 'WAITING' | 'IN_PROGRESS' | 'COMPLETED';
   current_turn_player_id: string;
   crown_gauge: number;
+  other_crown_gauge: number; // Progress belonging to the player whose turn is inactive
   round_number: number;
   max_rounds: number;
   active_question_json: string | null;
@@ -410,8 +411,7 @@ export async function answerQuestion(
       nextMode = 'GAME_OVER';
     }
   } else {
-    // Incorrect answer or timeout
-    nextCrownGauge = 0;
+    // Incorrect answers and timeouts preserve the answering player's progress.
     turnContinued = false;
     nextPlayerId = opponentId || playerId;
     nextMode = 'SPIN';
@@ -504,13 +504,15 @@ export async function answerQuestion(
 
   const status = winnerId ? 'COMPLETED' : 'IN_PROGRESS';
 
+  const changesPlayer = nextPlayerId !== playerId;
   statements.push({ sql: `UPDATE games
-     SET current_turn_player_id = ?, crown_gauge = ?, round_number = ?,
+     SET current_turn_player_id = ?, crown_gauge = ?, other_crown_gauge = ?, round_number = ?,
          status = ?, active_mode = ?, winner_id = ?, win_reason = ?,
          active_question_json = NULL, last_result_json = ?, updated_at = ?
      WHERE id = ?`, params: [
       nextPlayerId,
-      nextCrownGauge,
+      changesPlayer ? game.other_crown_gauge : nextCrownGauge,
+      changesPlayer ? nextCrownGauge : game.other_crown_gauge,
       roundNumber,
       status,
       nextMode,
@@ -625,7 +627,7 @@ async function buildGameStateSync(
     id: game.player1_id,
     username: p1User?.username || 'Player 1',
     crowns: p1Crowns,
-    crownGauge: game.current_turn_player_id === game.player1_id ? game.crown_gauge : 0,
+    crownGauge: game.current_turn_player_id === game.player1_id ? game.crown_gauge : game.other_crown_gauge,
     isConnected: true,
     score: p1Score
   };
@@ -635,7 +637,7 @@ async function buildGameStateSync(
         id: p2User.id,
         username: p2User.username,
         crowns: p2Crowns,
-        crownGauge: game.current_turn_player_id === p2User.id ? game.crown_gauge : 0,
+        crownGauge: game.current_turn_player_id === p2User.id ? game.crown_gauge : game.other_crown_gauge,
         isConnected: true,
         score: p2Score
       }

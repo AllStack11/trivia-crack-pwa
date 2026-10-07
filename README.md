@@ -143,3 +143,5 @@ Each SSE invocation counts database statements, including batches, against a 45-
 Backgrounding does not extend question deadlines. If everyone is hidden, timeout resolution and its turn notification wait for the next authenticated match read. Notifications remain opt-in and do not require a background SSE connection.
 
 The one-second polling baseline is visible player-seconds: eight players visible for one hour each contribute 28,800 poll reads, versus 691,200 for 24 hours. Authentication, rotating snapshots, answer-history scans, dashboard reads, actions, and push delivery add overhead. The 20-second lifetime is a conservative provisional ceiling; local workerd cannot establish production billed CPU headroom under the Free 10 ms limit. See [verification results and remaining device/runtime checks](docs/foreground-gameplay-sync-verification.md). No Free-tier capacity guarantee follows from the baseline alone.
+
+Crown charge belongs to each player and persists across turns. Wrong answers and timeouts pass the turn without clearing charge. Reaching three correct regular answers or answering a crown question correctly resets that player's charge.

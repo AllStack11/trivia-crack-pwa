@@ -45,10 +45,13 @@ describe('game integrity through the D1 adapter', () => {
   });
 
   test('reading a match resolves an expired question without an answer from the disconnected player', async () => {
+    await db.execute('UPDATE games SET crown_gauge = 2 WHERE id = ?', [gameId]);
     await question({ startedAt: Date.now() - QUESTION_DURATION_MS - QUESTION_ANSWER_GRACE_MS - 1000 });
     const state = await getGameStateSync(db, gameId);
     expect(state?.mode).toBe('SPIN');
     expect(state?.currentTurnPlayerId).toBe(p2.account.id);
+    expect(state?.players.p1.crownGauge).toBe(2);
+    expect(state?.players.p2?.crownGauge).toBe(0);
     expect(state?.revision).toBe(1);
     expect((await getGameStateSync(db, gameId))?.revision).toBe(1);
   });

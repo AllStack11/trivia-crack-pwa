@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS games (
   status TEXT NOT NULL DEFAULT 'WAITING',
   current_turn_player_id TEXT NOT NULL,
   crown_gauge INTEGER NOT NULL DEFAULT 0,
+  other_crown_gauge INTEGER NOT NULL DEFAULT 0,
   round_number INTEGER NOT NULL DEFAULT 1,
   max_rounds INTEGER NOT NULL DEFAULT 25,
   active_question_json TEXT,

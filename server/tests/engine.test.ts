@@ -163,7 +163,7 @@ describe('Game Engine State Machine', () => {
     expect(state?.currentTurnPlayerId).toBe(PLAYER_ONE); // Still Alice's turn
   });
 
-  test('Incorrect answer passes turn to opponent and resets gauge', async () => {
+  test("Incorrect answers preserve each player's gauge across turn changes", async () => {
     const host = await createGame(db, PLAYER_ONE, PLAYER_TWO);
 
     await db.execute('UPDATE games SET crown_gauge = 2 WHERE id = ?', [host.gameId]);
@@ -198,7 +198,28 @@ describe('Game Engine State Machine', () => {
     expect(result.nextPlayerId).toBe(PLAYER_TWO);
 
     const state = await getGameStateSync(db, host.gameId);
-    expect(state?.players.p1.crownGauge).toBe(0);
+    expect(state?.players.p1.crownGauge).toBe(2);
+    expect(state?.players.p2?.crownGauge).toBe(0);
+    const persistedGame = await db.queryFirst<{ crown_gauge: number }>(
+      'SELECT crown_gauge FROM games WHERE id = ?',
+      [host.gameId]
+    );
+    expect(persistedGame?.crown_gauge).toBe(0);
+    const parkedGauge = await db.queryFirst<{ other_crown_gauge: number }>(
+      'SELECT other_crown_gauge FROM games WHERE id = ?', [host.gameId]
+    );
+    expect(parkedGauge?.other_crown_gauge).toBe(2);
+
+    // The opponent earns a point, then misses: both players keep their progress.
+    await db.execute(
+      "UPDATE games SET crown_gauge = 1, active_mode = 'QUESTION', active_question_json = ? WHERE id = ?",
+      [JSON.stringify({ ...stored, questionData: { ...stored.questionData, id: 'opponent-question' } }), host.gameId]
+    );
+    await answerQuestion(db, host.gameId, PLAYER_TWO, 'opponent-question', 0, 4000);
+    const returnedState = await getGameStateSync(db, host.gameId);
+    expect(returnedState?.currentTurnPlayerId).toBe(PLAYER_ONE);
+    expect(returnedState?.players.p1.crownGauge).toBe(2);
+    expect(returnedState?.players.p2?.crownGauge).toBe(1);
     expect(state?.currentTurnPlayerId).toBe(PLAYER_TWO);
     expect(state?.mode).toBe('SPIN');
   });
