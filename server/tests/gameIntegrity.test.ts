@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { createBunDatabase, createD1Database, SCHEMA_SQL, type AppDatabase } from '../src/db/database';
 import { answerQuestion, chooseCrown, createGame, getGameStateSync, resignGame, spinWheel } from '../src/services/gameEngine';
-import { getRandomQuestion } from '../src/services/packService';
+import { getRandomQuestion, ensureDefaultPackSeeded } from '../src/services/packService';
 import { memoryCache } from '../src/services/questionCache';
 import { CURATED_QUESTIONS } from '../src/services/curatedQuestions';
 import { register, logout } from '../src/services/authService';
@@ -115,6 +115,25 @@ describe('game integrity through the D1 adapter', () => {
     ]);
     expect(crowns.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect((await getGameStateSync(db, gameId))?.revision).toBe(2);
+  });
+
+  test('picker prefers questions unseen by either participant across matches', async () => {
+    await ensureDefaultPackSeeded(db);
+    const pack = await db.query<{ id: string }>("SELECT id FROM questions WHERE category = 'ART'");
+    const unseen = pack[pack.length - 1].id;
+    for (const q of pack.filter(q => q.id !== unseen)) {
+      await db.execute(`INSERT INTO game_answers
+        (id, game_id, player_id, question_id, is_correct, time_spent_ms, created_at)
+        VALUES (?, ?, ?, ?, 1, 100, ?)`,
+        [crypto.randomUUID(), gameId, p1.account.id, q.id, Date.now()]);
+    }
+    // The second player also saw these questions, even though the first answered.
+    const next = await getRandomQuestion(db, ['default'], 'ART', [], [p2.account.id]);
+    expect(next.id).toBe(unseen);
+    const fresh = await createGame(db, p2.account.id, p1.account.id);
+    await db.execute("UPDATE games SET active_mode = 'CROWN_CHOICE' WHERE id = ?", [fresh.gameId]);
+    await chooseCrown(db, fresh.gameId, p2.account.id, 'claim', 'ART');
+    expect((await getGameStateSync(db, fresh.gameId))?.activeQuestion?.id).toBe(unseen);
   });
 
   test('exhausted offline fallback questions remain answerable on repeated occurrences', async () => {

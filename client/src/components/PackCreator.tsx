@@ -12,16 +12,10 @@ import {
   Sparkles,
   Layers,
   ArrowUp,
-  Globe,
-  Loader2,
-  Zap,
-  RefreshCw
 } from 'lucide-react';
 import { apiUrl } from '../utils/api';
 import type {
   Category,
-  ExpandPackResponse,
-  QuestionData,
   QuestionPackExport,
   QuestionPackMeta
 } from '../../../shared/src/index';
@@ -78,140 +72,6 @@ export default function PackCreator({ onBack }: PackCreatorProps) {
   const [isImportSheetOpen, setIsImportSheetOpen] = useState<boolean>(false);
   const [importJsonText, setImportJsonText] = useState<string>('');
   const [isImporting, setIsImporting] = useState<boolean>(false);
-  // Expansion and API generation state
-  const [expandingPackId, setExpandingPackId] = useState<string | null>(null);
-  const [isGeneratingFromApi, setIsGeneratingFromApi] = useState<boolean>(false);
-  const [forceRefreshApi, setForceRefreshApi] = useState<boolean>(false);
-
-  const handleExpandPack = async (packId: string, packTitle: string) => {
-    setExpandingPackId(packId);
-    playButtonPop();
-    triggerHaptic('medium');
-    try {
-      const res = await fetch(apiUrl(`/api/packs/${packId}/expand`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          countPerCategory: 5,
-          forceRefresh: forceRefreshApi
-        })
-      });
-      if (res.ok) {
-        const data = (await res.json()) as ExpandPackResponse;
-        playButtonPop();
-        triggerHaptic('success');
-        showToast(`Added ${data.added} questions to "${packTitle}"! (Total: ${data.totalInPack})`, 'success');
-        void fetchPacks();
-      } else {
-        showToast('Could not expand pack', 'error');
-      }
-    } catch {
-      showToast('Network error expanding pack', 'error');
-    } finally {
-      setExpandingPackId(null);
-    }
-  };
-
-  const handleFetchCategoryQuestions = async (cat: Category, count = 5) => {
-    setIsGeneratingFromApi(true);
-    playButtonPop();
-    triggerHaptic('selection');
-    try {
-      const refreshQuery = forceRefreshApi ? '&refresh=true' : '';
-      const res = await fetch(apiUrl(`/api/questions/fetch?category=${cat}&amount=${count}${refreshQuery}`));
-      if (res.ok) {
-        const data = (await res.json()) as { questions: QuestionData[]; provider: string; cached?: boolean };
-        const newItems: NewQuestionItem[] = [];
-        for (const q of data.questions) {
-          if (q.incorrectAnswers && q.incorrectAnswers.length >= 3) {
-            newItems.push({
-              category: q.category,
-              question: q.question,
-              imageUrl: q.imageUrl,
-              correctAnswer: q.correctAnswer,
-              incorrectAnswers: [
-                q.incorrectAnswers[0],
-                q.incorrectAnswers[1],
-                q.incorrectAnswers[2]
-              ]
-            });
-          }
-        }
-        if (newItems.length > 0) {
-          setQuestions((prev) => [...prev, ...newItems]);
-          playButtonPop();
-          triggerHaptic('success');
-          const cacheBadge = data.cached ? ' [Cached]' : '';
-          showToast(
-            `Added ${newItems.length} questions for ${CATEGORIES[cat].name} from ${data.provider}${cacheBadge}!`,
-            'success'
-          );
-        } else {
-          showToast('No questions returned from API', 'error');
-        }
-      } else {
-        showToast('Failed to fetch questions from API', 'error');
-      }
-    } catch {
-      showToast('Network error fetching questions', 'error');
-    } finally {
-      setIsGeneratingFromApi(false);
-    }
-  };
-
-  const handleGenerateWholePack = async () => {
-    setIsGeneratingFromApi(true);
-    playButtonPop();
-    triggerHaptic('medium');
-    try {
-      const refreshQuery = forceRefreshApi ? '&refresh=true' : '';
-      const categoryResults = await Promise.all(
-        CATEGORY_LIST.map(async (cat) => {
-          try {
-            const res = await fetch(apiUrl(`/api/questions/fetch?category=${cat}&amount=5${refreshQuery}`));
-            if (!res.ok) return [];
-            const data = (await res.json()) as { questions: QuestionData[]; provider: string; cached?: boolean };
-            const items: NewQuestionItem[] = [];
-            for (const q of data.questions) {
-              if (q.incorrectAnswers && q.incorrectAnswers.length >= 3) {
-                items.push({
-                  category: q.category,
-                  question: q.question,
-                  imageUrl: q.imageUrl,
-                  correctAnswer: q.correctAnswer,
-                  incorrectAnswers: [
-                    q.incorrectAnswers[0],
-                    q.incorrectAnswers[1],
-                    q.incorrectAnswers[2]
-                  ]
-                });
-              }
-            }
-            return items;
-          } catch {
-            return [];
-          }
-        })
-      );
-      const fetchedQuestions = categoryResults.flat();
-      if (fetchedQuestions.length > 0) {
-        setQuestions((prev) => [...prev, ...fetchedQuestions]);
-        playButtonPop();
-        triggerHaptic('success');
-        showToast(
-          `Added ${fetchedQuestions.length} questions across all categories!`,
-          'success'
-        );
-      } else {
-        showToast('Could not fetch questions from Trivia APIs', 'error');
-      }
-    } catch {
-      showToast('Network error generating pack', 'error');
-    } finally {
-      setIsGeneratingFromApi(false);
-    }
-  };
-
   const fetchPacks = async () => {
     setLoading(true);
     try {
@@ -534,19 +394,6 @@ export default function PackCreator({ onBack }: PackCreatorProps) {
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <button
                           type="button"
-                          onClick={() => void handleExpandPack(p.id, p.title)}
-                          disabled={expandingPackId === p.id}
-                          title="Expand Pack from Free Trivia APIs (+30 questions)"
-                          className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 transition-colors border border-slate-700/60 disabled:opacity-50"
-                        >
-                          {expandingPackId === p.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
-                          ) : (
-                            <Globe className="w-4 h-4" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
                           onClick={() => handleExportPack(p.id, p.title)}
                           title="Export Pack JSON"
                           className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700/60"
@@ -614,74 +461,6 @@ export default function PackCreator({ onBack }: PackCreatorProps) {
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700/80 rounded-2xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
                 />
-              </div>
-            </div>
-
-            {/* Trivia APIs Autofill Bar */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-slate-900 to-indigo-950/60 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 flex-shrink-0">
-                  <Globe className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
-                    <span>Free Trivia APIs Generator</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-400/30">
-                      Live
-                    </span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-400/30 flex items-center gap-0.5">
-                      <Zap className="w-2.5 h-2.5" />
-                      Cached
-                    </span>
-                  </h4>
-                  <p className="text-[11px] text-slate-400">
-                    Auto-fill your pack instantly with cached trivia pools & live fallbacks
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => setForceRefreshApi(!forceRefreshApi)}
-                  className={`py-2 px-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                    forceRefreshApi
-                      ? 'bg-amber-500/20 border-amber-400/50 text-amber-300 shadow-sm'
-                      : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700/60 text-slate-300'
-                  }`}
-                  title={forceRefreshApi ? 'Force Fresh: Bypassing cache to fetch new questions from web' : 'Fast Mode: Reading from multi-tier cache'}
-                >
-                  <RefreshCw className={`w-3 h-3 ${forceRefreshApi ? 'text-amber-400' : 'text-slate-400'}`} />
-                  <span className="text-[11px]">{forceRefreshApi ? 'Fresh' : 'Fast'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => void handleFetchCategoryQuestions(curCategory, 5)}
-                  disabled={isGeneratingFromApi}
-                  className="flex-1 sm:flex-initial py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all disabled:opacity-50"
-                >
-                  {isGeneratingFromApi ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                  ) : (
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  )}
-                  <span>+5 {CATEGORIES[curCategory].name.split(' ')[0]}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => void handleGenerateWholePack()}
-                  disabled={isGeneratingFromApi}
-                  className="flex-1 sm:flex-initial py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-bold text-xs shadow flex items-center justify-center gap-1.5 active:scale-95 transition-all disabled:opacity-50"
-                >
-                  {isGeneratingFromApi ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Globe className="w-3.5 h-3.5" />
-                  )}
-                  <span>Fill All (+30)</span>
-                </button>
               </div>
             </div>
 

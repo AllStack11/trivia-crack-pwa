@@ -119,6 +119,17 @@ describe('Pack Service & OpenTDB Integration', () => {
     expect(q2.id).not.toBe(q1.id);
   });
 
+  test('answered text is excluded even when another pack has a different ID', async () => {
+    await ensureDefaultPackSeeded(db);
+    const original = await getRandomQuestion(db, ['default'], 'SCIENCE');
+    const packId = await createPack(db, 'Copies', '', 'Tester', [
+      { ...original, question: `  ${original.question.toUpperCase()}  ` },
+      { ...original, question: 'A completely new science question?' }
+    ]);
+    const picked = await getRandomQuestion(db, [packId], 'SCIENCE', [original.id]);
+    expect(picked.question).toBe('A completely new science question?');
+  });
+
   test('import rejects questions with categories outside the game wheel', async () => {
     await expect(importPack(db, {
       title: 'Unsupported category pack',

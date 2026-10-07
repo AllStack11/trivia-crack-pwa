@@ -164,7 +164,7 @@ export async function spinWheel(
       )
     ).map((r) => r.question_id);
 
-    const question = await getRandomQuestion(db, packIds, landedSlice, answeredIds);
+    const question = await getRandomQuestion(db, packIds, landedSlice, answeredIds, [game.player1_id, game.player2_id].filter((id): id is string => !!id));
     const options = shuffleArray([question.correctAnswer, ...question.incorrectAnswers]);
     const correctIndex = options.indexOf(question.correctAnswer);
 
@@ -265,7 +265,7 @@ export async function chooseCrown(
     )
   ).map((r) => r.question_id);
 
-  const question = await getRandomQuestion(db, packIds, chosenCategory, answeredIds);
+  const question = await getRandomQuestion(db, packIds, chosenCategory, answeredIds, [game.player1_id, game.player2_id].filter((id): id is string => !!id));
   const options = shuffleArray([question.correctAnswer, ...question.incorrectAnswers]);
   const correctIndex = options.indexOf(question.correctAnswer);
   const now = Date.now();

@@ -14,7 +14,6 @@ import {
   Play,
   Check,
   Plus,
-  Globe,
   Loader2,
   Flag
 } from 'lucide-react';
@@ -22,7 +21,6 @@ import type {
   AccountSummary,
   AuthResponse,
   DirectoryPlayer,
-  ExpandPackResponse,
   GameListResponse,
   InvitationSummary,
   PlayerSummary,
@@ -108,35 +106,6 @@ export default function Lobby({
   const [selectedPackIds, setSelectedPackIds] = useState<string[]>(['default']);
   const [players, setPlayers] = useState<Player[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [expandingPackId, setExpandingPackId] = useState<string | null>(null);
-
-  const handleExpandPack = async (packId: string, packTitle: string) => {
-    setExpandingPackId(packId);
-    playButtonPop();
-    triggerHaptic('medium');
-    try {
-      const res = await fetch(apiUrl(`/api/packs/${packId}/expand`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ countPerCategory: 5 })
-      });
-      if (res.ok) {
-        const data = (await res.json()) as ExpandPackResponse;
-        showToast(`Added ${data.added} questions to "${packTitle}"! (Total: ${data.totalInPack})`, 'success');
-        triggerHaptic('success');
-        const packsRes = await fetch(apiUrl('/api/packs'));
-        if (packsRes.ok) {
-          setPacks((await packsRes.json()) as QuestionPackMeta[]);
-        }
-      } else {
-        showToast('Could not expand pack', 'error');
-      }
-    } catch {
-      showToast('Network error expanding pack', 'error');
-    } finally {
-      setExpandingPackId(null);
-    }
-  };
   const [matches, setMatches] = useState<Match[]>([]);
   const [directory, setDirectory] = useState<DirectoryPlayer[]>([]);
   const [directoryLoading, setDirectoryLoading] = useState(false);
@@ -967,26 +936,7 @@ export default function Lobby({
                       Selected packs are used when creating new matches.
                     </p>
                   </div>
-                  {selectedPackIds.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const targetPackId = selectedPackIds[0] || 'default';
-                        const targetPack = packs.find((p) => p.id === targetPackId);
-                        void handleExpandPack(targetPackId, targetPack?.title || 'Selected Pack');
-                      }}
-                      disabled={expandingPackId !== null}
-                      title="Fetch 30 new questions from free trivia APIs"
-                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white text-xs font-bold shadow flex items-center gap-1.5 active:scale-95 disabled:opacity-50 transition-all flex-shrink-0"
-                    >
-                      {expandingPackId ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Globe className="w-3.5 h-3.5" />
-                      )}
-                      <span>+30 Qs</span>
-                    </button>
-                  )}
+
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -1009,23 +959,6 @@ export default function Lobby({
                           <span className="block text-xs text-slate-400 mt-0.5">{pack.questionCount} Questions</span>
                         </button>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleExpandPack(pack.id, pack.title);
-                            }}
-                            disabled={expandingPackId === pack.id}
-                            aria-label={`Add 30 questions to ${pack.title}`}
-                            title="Fetch 30 fresh questions from free trivia APIs"
-                            className="w-11 p-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-emerald-400 border border-slate-700/60 transition-all active:scale-95 disabled:opacity-50"
-                          >
-                            {expandingPackId === pack.id ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                            ) : (
-                              <Globe className="w-3.5 h-3.5" />
-                            )}
-                          </button>
                           <div
                             className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
                               isSelected

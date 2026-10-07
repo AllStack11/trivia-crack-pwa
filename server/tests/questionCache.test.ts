@@ -1,5 +1,5 @@
 import { asD1 } from './helpers/d1';
-import { expect, test, describe, beforeEach } from 'bun:test';
+import { expect, test, describe, beforeEach, spyOn } from 'bun:test';
 import type { AppDatabase } from '../src/db/database';
 import { createBunDatabase, SCHEMA_SQL } from '../src/db/database';
 import {
@@ -98,6 +98,17 @@ describe('Multi-Tier Question Caching System', () => {
       expect(batch3.length).toBe(2);
     });
 
+    test('randomizes tied questions rather than serving insertion order', () => {
+      const random = spyOn(Math, 'random').mockReturnValue(0);
+      try {
+        const cache = new MemoryQuestionCache();
+        cache.put('SCIENCE', mockQuestions, 'test');
+        const firstCycle = cache.get('SCIENCE', 4).map(q => q.id);
+        expect(firstCycle).toEqual(['q2', 'q3', 'q4', 'q1']);
+        expect(new Set(firstCycle).size).toBe(4);
+      } finally { random.mockRestore(); }
+    });
+
     test('respects excludeTexts and excludeIds', () => {
       const cache = new MemoryQuestionCache();
       cache.put('SCIENCE', mockQuestions, 'test');
@@ -176,6 +187,17 @@ describe('Multi-Tier Question Caching System', () => {
       const nextQueried = await queryDbCachedQuestions(db, 'SCIENCE', 1);
       expect(nextQueried.length).toBe(1);
       expect(nextQueried[0].id).not.toBe(queried[0].id);
+    });
+
+    test('exclusions do not hide eligible questions beyond the initial cache window', async () => {
+      const questions = Array.from({ length: 100 }, (_, i) => ({
+        ...mockQuestions[0], id: `large_${i}`, question: `Unique science question ${i}?`
+      }));
+      await persistDbCachedQuestions(db, questions, 'test');
+      const eligible = await queryDbCachedQuestions(db, 'SCIENCE', 1, {
+        excludeIds: new Set(questions.slice(0, 99).map(q => q.id))
+      });
+      expect(eligible.map(q => q.id)).toEqual(['large_99']);
     });
 
     test('deduplicates questions on duplicate question text', async () => {

@@ -1,3 +1,5 @@
+import { shuffled } from './questionSelection';
+import { normalizeQuestionText, queryDbCachedQuestions, toQuestionData, incrementDbServedCount } from './questionCache';
 import { CATEGORIES, type Category, type QuestionData, type QuestionPackExport, type QuestionPackMeta } from '../../../shared/src/index';
 import type { AppDatabase } from '../db/database';
 import { CURATED_QUESTIONS } from './curatedQuestions';
@@ -40,7 +42,7 @@ export async function ensureDefaultPackSeeded(db: AppDatabase): Promise<void> {
     await db.execute(
       `INSERT OR IGNORE INTO question_packs (id, title, description, is_default, created_by, created_at)
        VALUES (?, ?, ?, 1, 'system', ?)`,
-      ['default', 'Classic Trivia Clash Pack', 'Standard 180-question curated bank spanning all 6 classic categories with visual trivia', Date.now()]
+      ['default', 'Classic Trivia Clash Pack', 'An automatically growing trivia bank across all 6 categories, starting with 180 curated questions', Date.now()]
     );
   }
 
@@ -50,19 +52,13 @@ export async function ensureDefaultPackSeeded(db: AppDatabase): Promise<void> {
   );
 
   if (!countRow || countRow.count < 180) {
-    for (const q of CURATED_QUESTIONS) {
+    for (let i = 0; i < CURATED_QUESTIONS.length; i += 14) {
+      const questions = CURATED_QUESTIONS.slice(i, i + 14);
       await db.execute(
         `INSERT OR IGNORE INTO questions (id, pack_id, category, question, image_url, correct_answer, incorrect_answers_json, difficulty)
-         VALUES (?, 'default', ?, ?, ?, ?, ?, ?)`,
-        [
-          q.id,
-          q.category,
-          q.question,
-          q.imageUrl || null,
-          q.correctAnswer,
-          JSON.stringify(q.incorrectAnswers),
-          q.difficulty
-        ]
+         VALUES ${questions.map(() => "(?, 'default', ?, ?, ?, ?, ?, ?)").join(',')}`,
+        questions.flatMap(q => [q.id, q.category, q.question, q.imageUrl || null,
+          q.correctAnswer, JSON.stringify(q.incorrectAnswers), q.difficulty])
       );
     }
   }
@@ -272,27 +268,38 @@ export async function getRandomQuestion(
   db: AppDatabase,
   packIds: string[],
   category: Category,
-  excludeQuestionIds: string[] = []
+  excludeQuestionIds: string[] = [],
+  participantIds: string[] = []
 ): Promise<QuestionData> {
   await ensureDefaultPackSeeded(db);
   const activePacks = packIds.length > 0 ? packIds : ['default'];
   const placeholders = 'SELECT value FROM json_each(?)';
 
-  let querySql = `
-    SELECT * FROM questions
-    WHERE pack_id IN (${placeholders})
-    AND category = ?
-  `;
-  const queryParams: unknown[] = [JSON.stringify(activePacks), category];
+  // Exclude copies of answered content across packs and providers, too.
+  const excludedRows = excludeQuestionIds.length ? await db.query<{ question: string }>(
+    `SELECT question FROM questions WHERE id IN (SELECT value FROM json_each(?))
+     UNION SELECT question FROM cached_questions WHERE id IN (SELECT value FROM json_each(?))`,
+    [JSON.stringify(excludeQuestionIds), JSON.stringify(excludeQuestionIds)]
+  ) : [];
+  const excludeTexts = new Set(excludedRows.map(q => normalizeQuestionText(q.question)));
 
-  if (excludeQuestionIds.length > 0) {
-    querySql += ' AND id NOT IN (SELECT value FROM json_each(?))';
-    queryParams.push(JSON.stringify(excludeQuestionIds));
-  }
-
-  querySql += ' ORDER BY RANDOM() LIMIT 1';
-
-  const row = await db.queryFirst<DbQuestionRow>(querySql, queryParams);
+  // Prefer content unseen by both players, then least-seen content, with random ties.
+  const rows = await db.query<DbQuestionRow>(`
+    SELECT q.* FROM questions q
+    WHERE q.pack_id IN (${placeholders}) AND q.category = ?
+      AND q.id NOT IN (SELECT value FROM json_each(?))
+    ORDER BY (
+      SELECT COUNT(*) FROM game_answers a
+      JOIN games g ON g.id = a.game_id
+      JOIN questions seen ON seen.id = a.question_id
+      WHERE (g.player1_id IN (SELECT value FROM json_each(?))
+          OR g.player2_id IN (SELECT value FROM json_each(?)))
+        AND LOWER(TRIM(seen.question)) = LOWER(TRIM(q.question))
+    ) ASC, RANDOM()`,
+    [JSON.stringify(activePacks), category, JSON.stringify(excludeQuestionIds),
+     JSON.stringify(participantIds), JSON.stringify(participantIds)]
+  );
+  const row = rows.find(q => !excludeTexts.has(normalizeQuestionText(q.question)));
   if (row) {
     let incorrect: string[] = [];
     try {
@@ -313,14 +320,20 @@ export async function getRandomQuestion(
     };
   }
 
-  // If all local questions in this category have been exhausted, fetch dynamically with cache-first lookup
-  const liveResult = await fetchLiveQuestions(category, 1, 'default', db, false, excludeQuestionIds);
-  if (liveResult.questions.length > 0) {
-    return liveResult.questions[0];
+  // Turns only read stored content; provider requests happen in background ingestion.
+  const cached = await queryDbCachedQuestions(db, category, 1, {
+    excludeIds: new Set(excludeQuestionIds), excludeTexts,
+  });
+  if (cached.length) {
+    await incrementDbServedCount(db, [cached[0].id]);
+    return toQuestionData(cached[0]);
   }
 
-  // Ultimate fallback to curated
-  const fallback = CURATED_QUESTIONS.find((q) => q.category === category) || CURATED_QUESTIONS[0];
+  const curated = CURATED_QUESTIONS.filter(q => q.category === category);
+  const unasked = shuffled(curated.filter(q => !excludeQuestionIds.includes(q.id)
+    && !excludeTexts.has(normalizeQuestionText(q.question))))[0];
+  if (unasked) return { ...unasked, packId: 'default' };
+  const fallback = shuffled(curated)[0] || CURATED_QUESTIONS[0];
   return {
     ...fallback,
     // Once every source is exhausted, replay content as a new answerable occurrence.
@@ -352,7 +365,8 @@ export async function fetchLiveQuestions(
   packId: string = 'default',
   db?: AppDatabase,
   forceRefresh?: boolean,
-  excludeQuestionIds?: string[]
+  excludeQuestionIds?: string[],
+  excludeTexts?: Set<string>
 ) {
   return fetchTriviaQuestionsWithFallback({
     category,
@@ -360,6 +374,7 @@ export async function fetchLiveQuestions(
     packId,
     db,
     forceRefresh,
-    excludeQuestionIds
+    excludeQuestionIds,
+    excludeTexts
   });
 }

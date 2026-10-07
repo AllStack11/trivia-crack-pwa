@@ -26,12 +26,13 @@ A mobile-first Progressive Web App (PWA) clone of Trivia Crack built for friends
   - 30 questions per category with rich visual/image questions (flags, landmarks, paintings, historical figures).
 - **Multi-Tier Question Caching & Cascading Fallback**:
   - Fast in-memory question pools (`MemoryQuestionCache`) with 2-hour configurable TTL, LRU capacity pruning, and rotation tracking (`servedHistory`) to prevent duplicate questions on consecutive queries.
-  - Persistent database storage (`cached_questions` table in SQLite/Cloudflare D1) ordered by lowest served count.
+  - Persistent database storage (`cached_questions` table in SQLite/Cloudflare D1) ordered by lowest served count with randomized ties.
   - Dynamic fetching across **The Trivia API (v2)**, **Open Trivia Database (OpenTDB)**, **The Trivia API (v1)**, and **Will Fry Trivia API** with automatic refill batches.
   - Multi-tier cascading fallback: checks memory cache first $\rightarrow$ SQLite/D1 second $\rightarrow$ external APIs third $\rightarrow$ curated pre-bundled pool on complete network/rate-limit failure.
   - Live pack expansion (`POST /api/packs/:packId/expand`) and live question fetching (`GET /api/questions/fetch`) with `Cache-Control` and `X-Cache-Status` headers.
   - Cache monitoring and management endpoints (`GET /api/questions/cache/stats`, `POST /api/questions/cache/clear`).
-  - Pack Studio UI with Fast/Fresh toggle and parallelized 30-question deck autofill.
+  - App launch, foreground return, and reconnect silently request a background refill. A persisted five-minute global cooldown coalesces concurrent opens across Workers. Each eligible refill requests up to 10 fresh questions per category in parallel and permanently adds unique content to the default bank. Stable normalized-text hashes prevent repeated ingestion; existing content is retained indefinitely.
+  - Pack Studio supports authored questions and JSON import/export; manual API fetch and expansion controls have been removed.
 - **Custom Question Pack Creator**:
   - In-app pack manager supporting custom image URLs with live thumbnail preview.
   - JSON Import / Export matching standard format.
@@ -104,7 +105,7 @@ cd client && bun run deploy
 
 The migration baseline targets a fresh database; it does not upgrade older deployments. Verify migrations with disposable local D1 state, never the production database.
 
-Game actions use monotonic revisions and commit answer claims, scores, crowns and game state atomically. Question deadlines are persisted by the server: ordinary questions include the 6.4-second wheel animation and 0.9-second landing display before their 20-second timer; crown questions start immediately. The server allows 2 seconds for delivery and resolves expired questions on authenticated REST match reads, even if the player disconnects. SSE requests a fresh REST read when a deadline expires. Reloading preserves the deadline. If all question sources are exhausted, content can repeat with a new answerable occurrence ID.
+Game actions use monotonic revisions and commit answer claims, scores, crowns and game state atomically. Question deadlines are persisted by the server: ordinary questions include the 6.4-second wheel animation and 0.9-second landing display before their 20-second timer; crown questions start immediately. The server allows 2 seconds for delivery and resolves expired questions on authenticated REST match reads, even if the player disconnects. SSE requests a fresh REST read when a deadline expires. Reloading preserves the deadline. Gameplay reads stored pack/cache content without contacting external providers. Question selection favors pack content neither participant has encountered in previous matches, then least-seen content, with random ties. Answered question text is excluded across pack copies and cached providers. Cache rotation and curated fallbacks use unbiased shuffling. If all question sources are exhausted, a random curated question can repeat with a new answerable occurrence ID.
 
 Session tokens remain in the client account storage and bearer headers. SSE does not accept query-string session tokens. Request logs omit query strings and headers. Client synchronization ignores older revisions and responses from previous matches or sessions; failed answer requests unlock the options for retry.
 

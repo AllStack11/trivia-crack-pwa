@@ -153,6 +153,23 @@ function AppContent() {
   const reviewGenerationRef = useRef(0);
 
 
+  // Refill the shared bank silently on launch, foreground return, and reconnect.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'hidden' || !navigator.onLine) return;
+      void fetch(apiUrl('/api/questions/refresh'), {
+        method: 'POST', signal: AbortSignal.timeout(8000),
+      }).catch(() => {});
+    };
+    refresh();
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('online', refresh);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('online', refresh);
+    };
+  }, []);
+
   // Restore credentials only after the server confirms the account session
   useEffect(() => {
     let mounted = true;

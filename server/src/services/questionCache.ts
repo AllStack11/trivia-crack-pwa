@@ -1,3 +1,4 @@
+import { shuffled } from './questionSelection';
 import type { Category, QuestionData } from '../../../shared/src/index';
 import type { AppDatabase } from '../db/database';
 
@@ -127,17 +128,16 @@ export class MemoryQuestionCache {
       unserved = [...candidates];
     }
 
-    // Sort unserved by servedCount ASC, lastServedAt ASC for fair rotation
-    unserved.sort((a, b) => a.servedCount - b.servedCount || a.lastServedAt - b.lastServedAt);
+    // Favor less-served questions, shuffling ties instead of repeating insertion order.
+    unserved = shuffled(unserved).sort((a, b) => a.servedCount - b.servedCount);
 
     const selected = unserved.slice(0, amount);
 
     // If we couldn't fulfill the entire amount from unserved, pull from remaining candidates
     if (selected.length < amount && selected.length < candidates.length) {
       const selectedIds = new Set(selected.map((s) => s.id));
-      const remaining = candidates
-        .filter((q) => !selectedIds.has(q.id))
-        .sort((a, b) => a.servedCount - b.servedCount || a.lastServedAt - b.lastServedAt);
+      const remaining = shuffled(candidates.filter((q) => !selectedIds.has(q.id)))
+        .sort((a, b) => a.servedCount - b.servedCount);
       const needed = amount - selected.length;
       selected.push(...remaining.slice(0, needed));
     }
@@ -296,15 +296,14 @@ export async function queryDbCachedQuestions(
     excludeIds?: Set<string>;
   }
 ): Promise<CachedQuestionItem[]> {
-  // Query a pool of questions ordered by lowest served_count and oldest last_served_at
-  const fetchLimit = Math.max(limit * 3, 30);
+  // Favor less-served questions with random ties.
+  // Scan the eligible category: exclusions must not hide unseen rows beyond a fixed window.
   const rows = await db.query<DbCachedQuestionRow>(
     `SELECT id, category, question, image_url, correct_answer, incorrect_answers_json, difficulty, provider, cached_at, served_count, last_served_at
      FROM cached_questions
      WHERE category = ?
-     ORDER BY served_count ASC, last_served_at ASC
-     LIMIT ?`,
-    [category, fetchLimit]
+     ORDER BY served_count ASC, RANDOM()`,
+    [category]
   );
 
   const result: CachedQuestionItem[] = [];

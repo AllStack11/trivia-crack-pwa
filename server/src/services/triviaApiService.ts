@@ -1,3 +1,4 @@
+import { shuffled } from './questionSelection';
 import type { Category, QuestionData } from '../../../shared/src/index';
 import type { AppDatabase } from '../db/database';
 import { CURATED_QUESTIONS } from './curatedQuestions';
@@ -459,8 +460,7 @@ export async function fetchTriviaQuestionsWithFallback(
   );
 
   // Shuffle curated questions
-  const shuffled = [...filteredCurated].sort(() => Math.random() - 0.5);
-  const fallbackList: QuestionData[] = shuffled
+  const fallbackList: QuestionData[] = shuffled(filteredCurated)
     .slice(0, amount)
     .map((q) => ({
       ...q,

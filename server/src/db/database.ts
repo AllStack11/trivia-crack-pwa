@@ -165,6 +165,15 @@ CREATE INDEX IF NOT EXISTS idx_invitations_pair_status ON game_invitations(sende
 CREATE UNIQUE INDEX IF NOT EXISTS idx_invites_pending_pair ON game_invitations(sender_id, recipient_id) WHERE status = 'PENDING';
 CREATE INDEX IF NOT EXISTS idx_games_players_updated ON games(player1_id, player2_id, updated_at);
 
+
+CREATE TABLE IF NOT EXISTS question_ingestion (
+  id TEXT PRIMARY KEY,
+  lease_token TEXT NOT NULL,
+  next_allowed_at INTEGER NOT NULL,
+  last_completed_at INTEGER,
+  last_added INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS cached_questions (
   id TEXT PRIMARY KEY,
   category TEXT NOT NULL,

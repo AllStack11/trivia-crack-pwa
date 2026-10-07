@@ -17,6 +17,7 @@ import {
 import type { CloudflareD1Database } from './db/database';
 import { getDatabase } from './db/database';
 import { queryBudget } from './db/queryBudget';
+import { ingestQuestions } from './services/questionIngestion';
 import { updateMatchPresence } from './services/presenceService';
 import {
   answerQuestion,
@@ -67,6 +68,13 @@ app.use('*', async (c, next) => {
 // Health check
 app.get('/api/health', (c) => {
   return c.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// App opens request a refill without waiting for provider calls.
+app.post('/api/questions/refresh', (c) => {
+  const task = getDatabase(c.env).then(ingestQuestions).catch(() => console.warn('Question refresh deferred'));
+  try { c.executionCtx.waitUntil(task); } catch { void task; /* Bun keeps the process alive. */ }
+  return c.body(null, 202);
 });
 
 // Account authentication and identity.
